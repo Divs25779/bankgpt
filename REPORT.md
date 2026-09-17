@@ -40,20 +40,38 @@ See `src/artifact/schema.py`. Design rationale:
   place in a document meant to be reviewed as a contract.
 - `risk` per step + `review_status` on the artifact is the hook for conservative handling of
   irreversible actions (section 6).
+- `escalation_triggers` is a declared list, structurally parallel to `business_outcomes`, for
+  conditions the capability knows it cannot resolve itself (see section 5) -- "stuck" is data on
+  the artifact, not an implicit fallback in the replay code.
 
 ## 3. Determinism & error handling
 
 [TODO: finalize once replay executor is implemented]
 
-Result taxonomy (`ReplayResult` / `ReplayStatus`):
+Result taxonomy (`ReplayResult` / `ReplayStatus`), evaluated in this priority order at every
+checkpoint:
 
-- **success** -- checkpoint reached, declared outputs extracted.
-- **business_outcome** -- a declared `BusinessOutcome` matched (e.g. member not found). Not a
-  failure; a typed answer the caller needs.
-- **hard_failure** -- neither the success checkpoint nor any declared outcome matched within
-  timeout. Evidence (screenshot + accessibility snapshot) captured before returning; `FailureDetail`
-  states which step, what was expected, what was observed.
-- **escalated** -- routed to a human mid-run rather than resolved automatically.
+1. **success** -- the success checkpoint is reached; declared outputs extracted.
+2. **business_outcome** -- a declared `BusinessOutcome` matched (e.g. member not found, permission
+   denied). Not a failure; a typed answer the caller needs.
+3. **escalated** -- a declared `EscalationTrigger` matched (e.g. session expired mid-flow). The
+   artifact has explicitly named this as a condition it cannot resolve deterministically; the run
+   pauses and hands the live session to a human rather than guessing (see section 5).
+4. **hard_failure** -- nothing above matched within timeout. Evidence (screenshot + accessibility
+   snapshot) captured before returning; `FailureDetail` states which step, what was expected, what
+   was observed. By default (`escalate_on_unclassified_hard_failure=True`) even this genuinely
+   unanticipated case is routed to a human first, since in a regulated-banking workflow "ask a
+   person" is a better default than "fail silently" -- overridable per-artifact for low-stakes,
+   read-only capabilities where fail-fast to the caller is preferable instead.
+
+**Distinguishing "the click failed" from "the content is just slow".** The mock app's slow-load
+case (`00003`, ~6s render delay) is handled by keeping two checkpoints separate rather than one:
+the navigation/search-redirect checkpoint (near-instant) and a dedicated `WAIT_FOR` step targeting
+the balance field specifically, with its own generous `timeout_ms`. Every checkpoint is evaluated
+by polling (short interval, up to `timeout_ms`) rather than a single one-shot check -- "the click
+didn't throw" is not evidence the page finished loading. If replay fails, the evidence shows
+*which* of these two independently-verifiable conditions didn't hold, rather than one generic
+timeout.
 
 Determinism is achieved by: no model in the replay decision loop at all; locator fallback chains
 tried in a fixed order; explicit checkpoints (not "the click didn't throw") gating every
@@ -86,12 +104,26 @@ keep running or silently fail.
 The browser runs headed, locally, so "the human takes control of the live session" is literally
 true -- there is one browser window, and control is a logical flag (`Controller.AUTOMATION` /
 `Controller.HUMAN`) the automation checks before every action, not a separate session that needs
-transferring. On `STUCK` (discovery) or `hard_failure` (replay), an `InterventionRequest` is
-written to evidence with full context (goal/capability, step, URL, screenshot, reason) and control
-flips to human. A minimal control surface lets the human signal resume once done; the loop
-re-observes state before continuing rather than trusting stale state. Full action-by-action
-capture of what the human does inside the browser is out of scope (see section 7) -- the fact and
-duration of the handoff is logged; the human's individual clicks are not.
+transferring.
+
+**What triggers escalation, concretely.** Rather than treating "stuck" as an implicit fallback,
+the artifact declares `escalation_triggers` explicitly (parallel to `business_outcomes` -- see
+section 2). The mock app's session-expiry state (member `00002`) is the primary demonstrated case:
+the replay engine has no re-authentication logic, deliberately, since teaching deterministic
+replay to silently re-auth would turn a bounded, reviewable capability into an opaque one. An
+alternate trigger -- an unmapped/unexpected system error the artifact was never told to expect --
+is also available in the mock app (deposit amount `999999`) and falls through to the
+`hard_failure` + default-escalate path (item 4 in section 3's taxonomy) instead of a declared
+trigger, demonstrating both the "known-unknown" and "unknown-unknown" escalation paths.
+
+On either an `EscalationTrigger` match or an unclassified `hard_failure`, an `InterventionRequest`
+is written to evidence with full context (goal/capability, step, URL, screenshot, reason) and
+control flips to human. A minimal control surface lets the human signal resume once done; the loop
+re-observes state before continuing rather than trusting stale state -- the human may have fixed
+the underlying condition (e.g. re-authenticated) or may not have, and the automation should not
+assume either. Full action-by-action capture of what the human does inside the browser is out of
+scope (see section 7) -- the fact and duration of the handoff is logged; the human's individual
+clicks are not.
 
 ## 6. Safety
 

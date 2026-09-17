@@ -1,0 +1,26 @@
+<html>
+<head><title>Open New Sub-Account</title></head>
+<body bgcolor="#ECECEC">
+<table border="1" cellpadding="4" cellspacing="0" width="500">
+  <tr><td bgcolor="#003366"><font color="white" face="Arial"><b>Open New Sub-Account &mdash; {{ member.name }}</b></font></td></tr>
+  {% if error %}
+  <tr><td><font color="red"><b>{{ error }}</b></font></td></tr>
+  {% endif %}
+  <tr>
+    <td>
+      <form method="post" action="/member/{{ member.member_id }}/new-subaccount">
+        <table border="0">
+          <tr>
+            <td><label for="amt1">Initial Deposit Amount ($):</label></td>
+            <td><input type="text" id="amt1" name="deposit_amount" size="15" value="{{ deposit_amount or '' }}"></td>
+          </tr>
+          <tr>
+            <td colspan="2" align="right"><input type="submit" value="Continue"></td>
+          </tr>
+        </table>
+      </form>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

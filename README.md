@@ -15,20 +15,46 @@ executor, escalation manager, and mock target app are in progress -- see inline 
 
 ## Setup
 
+macOS/Linux:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
-
 export LLM_PROVIDER=anthropic          # or: openai
 export ANTHROPIC_API_KEY=sk-...        # or: export OPENAI_API_KEY=sk-...
 ```
 
-Run the mock target app (in a separate terminal):
+Windows (PowerShell/cmd):
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+playwright install chromium
+set LLM_PROVIDER=anthropic
+set ANTHROPIC_API_KEY=sk-...
+```
+
+Once your venv is active, always invoke `python` (not `python3`) so you don't accidentally
+fall through to a global interpreter outside the venv.
+
+Run the mock target app (in a separate terminal, **from the repo root** -- it's a package,
+so `python mock_bank_app/main.py` directly will fail with a `ModuleNotFoundError`):
 
 ```bash
-python3 mock_bank_app/app.py           # serves http://localhost:5000
+python -m mock_bank_app.main
+# or: uvicorn mock_bank_app.main:app --reload --port 5000
 ```
+
+This serves http://localhost:5000. Try it manually first:
+- Search for `12345` or `67890` -> normal member detail -> "Open New Sub-Account" -> fill in a
+  deposit amount -> Confirm (triggers a real browser `confirm()` dialog) -> success page.
+- Search for `00000` -> not-found (declared business outcome).
+- Search for `00001` -> permission denied (declared business outcome).
+- Search for `00002` -> session expired (declared escalation trigger -- the HITL demo path).
+- Search for `00003` -> valid member, but the detail page deliberately takes ~6s to render
+  (the slow-load / WAIT_FOR checkpoint scenario).
+- On the deposit form, entering `999999` produces an unmapped system error (the alternate
+  "unhandled validation error" hard-failure scenario, kept available alongside session expiry).
 
 ## Demo path (once implemented)
 

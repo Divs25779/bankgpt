@@ -185,6 +185,34 @@ class BusinessOutcome(BaseModel):
     is_success: bool
 
 
+class EscalationTrigger(BaseModel):
+    """
+    A named, anticipated condition that the artifact knows it CANNOT
+    resolve deterministically -- distinct from a BusinessOutcome, which
+    the artifact answers on its own. Detecting one of these means "stop
+    and get a human", not "here is the answer".
+
+    The canonical example in this system is session expiry: a
+    BusinessOutcome like "member not found" is something the replay
+    engine can answer with confidence. "Your session has expired" is
+    not -- the deterministic replay has no re-authentication logic, and
+    deliberately should not: teaching replay to silently re-auth is
+    exactly the kind of scope creep that turns a reviewable, bounded
+    capability into an opaque one. A human is the correct owner of that
+    decision, every time.
+
+    Detected with the same Locator/TextAssertion mechanism as a
+    checkpoint or outcome -- escalation triggers are just as much a
+    declared, reviewable part of the contract as anything else here.
+    """
+
+    name: str
+    description: str
+    detection: Union[Locator, TextAssertion]
+    reason: str = Field(description="Shown to the human operator in the intervention request, "
+                         "e.g. 'session expired mid-flow, re-authentication required'.")
+
+
 # ---------------------------------------------------------------------------
 # Target app reference (multi-tenant / heterogeneity hook -- see REPORT.md 3.7)
 # ---------------------------------------------------------------------------
