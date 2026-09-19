@@ -20,6 +20,23 @@ Key decisions made up front:
   infrastructure prematurely, discovery and replay both run as direct Playwright calls in one
   process. The architecture that *would* scale this (a queue between "capability requested" and
   "replay executed", a worker pool per tenant) is describable without being built -- see section 4.
+- **Stable, one-year-old accessibility API over a two-week-old nicer one.** Perception is built on
+  `page.locator("body").aria_snapshot()` (YAML, stable since Playwright v1.49), parsed with PyYAML
+  plus a small per-leaf regex. Playwright v1.63.0 (released ~Sept 2026, about two weeks before this
+  was written) added `ariaSnapshotJSON()`, which would have been a nicer shape to parse directly.
+  We didn't use it: the discovery run is the one requirement in this project that cannot be
+  mocked or allowed to be flaky, and building that on an API that had barely shipped -- with no
+  way to fully verify its Python-binding behavior in the time available -- was the wrong place to
+  take on version risk. Boring-and-proven beat new-and-nicer for this one path specifically.
+- **Our own per-turn element refs, not Playwright's native `aria-ref` mechanism** (the one
+  Playwright's own MCP/AI tooling uses internally). That mechanism is explicitly documented as
+  valid only within a single snapshot and goes stale the moment the page changes -- fine for an
+  LLM's immediate next click, useless for a `CapabilityArtifact` a replay engine needs to resolve
+  months later against a *different* page load. We assign our own ephemeral ref (`e0`, `e1`, ...)
+  per observation, resolved via the fully public `page.get_by_role(role, name=...)` API. The model
+  gets the same ergonomic benefit (pick an opaque id, never invent a selector); the artifact
+  compiler converts the winning run's `(ref -> role/name)` pairs into a durable `Locator` the model
+  never has to reason about at all.
 
 ## 2. Artifact schema
 
@@ -43,6 +60,13 @@ See `src/artifact/schema.py`. Design rationale:
 - `escalation_triggers` is a declared list, structurally parallel to `business_outcomes`, for
   conditions the capability knows it cannot resolve itself (see section 5) -- "stuck" is data on
   the artifact, not an implicit fallback in the replay code.
+- A fourth locator strategy, `LABEL_SIBLING`, exists specifically for non-interactive data fields
+  in a "label cell, value cell" table layout (e.g. reading a savings balance): the value itself has
+  no role or accessible name of its own, only its neighboring label does. Kept as its own strategy
+  rather than an overload of `TEXT` (which asserts plain text presence, used by checkpoints and
+  business outcomes) so a `Step` is self-describing on its own -- see LocatorStrategy's docstring
+  and section 4's discovery of this gap during review for the full reasoning, and section 7 for the
+  scope this convention covers.
 
 ## 3. Determinism & error handling
 
@@ -72,6 +96,28 @@ by polling (short interval, up to `timeout_ms`) rather than a single one-shot ch
 didn't throw" is not evidence the page finished loading. If replay fails, the evidence shows
 *which* of these two independently-verifiable conditions didn't hold, rather than one generic
 timeout.
+
+**Native browser dialogs (`confirm()`) are per-step data, not a separate step type.** The
+sub-account confirmation page triggers a real JS `confirm()` dialog, which fires *synchronously
+inside* the Playwright call that causes it -- there is no way to "click" and then, as a later
+step, "accept the dialog"; the handler must be registered before the triggering call runs. Rather
+than adding a disconnected `ACCEPT_DIALOG` step (which would force the replay executor to look
+ahead and couple two steps together), `Step.expects_dialog` is a field on the triggering step
+itself (see `DialogPolicy` in the schema). During discovery, a blanket dialog handler auto-accepts
+(discovery is trying to succeed) but every dialog that fires is recorded as a `DialogEvent`
+attached to that turn -- if this recording were skipped, the compiled artifact would look
+identical to a run with no dialog at all, and replay would hang or fail the first time it hit the
+same dialog for real, since replay deliberately does NOT use a blanket handler: it registers a
+one-shot handler only for the exact step that declares `expects_dialog`, so an *unexpected* dialog
+anywhere else is correctly treated as a hard failure rather than silently swallowed.
+
+**Locator resolution must match between discovery and replay, exactly.** Discovery resolves
+`role_name` locators via `page.get_by_role(role, name=name, exact=True)`. The replay executor
+reconstructs the identical call, `exact=True` included -- Playwright's default name matching is
+substring and case-insensitive, so omitting `exact=True` on either side risks the same artifact
+resolving to two different elements depending on which path executes it. This is exactly the kind
+of silent mismatch a schema-level contract can't catch on its own; it's enforced by convention
+between `src/agent/perception.py` and `src/replay/executor.py`, documented in both.
 
 Determinism is achieved by: no model in the replay decision loop at all; locator fallback chains
 tried in a fixed order; explicit checkpoints (not "the click didn't throw") gating every
@@ -141,7 +187,17 @@ its own classification -- see section 7.
 
 ## 7. Cuts
 
-[TODO: fill in honestly once the build is done -- e.g. multi-tenant override resolution designed
-but not implemented; desktop surface not implemented; operator UI is a bare CLI, not a real
-console; LLM-assisted single-step recovery on replay failure not built; multi-run stability
-scoring not built.]
+- **Data Extraction & Target Roles Filter (`cell` and `heading`):** The `cell` and `heading` roles
+  were deliberately removed from `TARGET_ROLES` in `perception.py` because they flooded the
+  observation with noise, whereas the actual interactive elements were already captured perfectly.
+  To still support reading non-interactive data (like checking a savings balance), we implemented a
+  secondary pass that extracts labels (text ending in `:`) and exposes them directly to the model,
+  separately from the interactive-element list. The compiler turns a chosen label into a dedicated
+  `LABEL_SIBLING` locator strategy -- distinct from `TEXT` (which is reserved for plain
+  text-presence assertions in checkpoints and business outcomes) -- that explicitly means "find
+  this label, then read its adjacent sibling," rather than overloading `TEXT` with a second,
+  context-dependent meaning. The cut: this only works when the label and value are immediately
+  adjacent siblings in DOM order. This covers the common case for legacy enterprise detail screens,
+  but extracting a value nested deeper or separated from its label would require a more general
+  extraction strategy (e.g., CSS fallbacks or spatial bounding) -- noted as a future enhancement.
+- **[TODO: fill in honestly once the build is done]** e.g. multi-tenant override resolution designed but not implemented; desktop surface not implemented; operator UI is a bare CLI, not a real console; LLM-assisted single-step recovery on replay failure not built; multi-run stability scoring not built.

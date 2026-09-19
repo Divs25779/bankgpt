@@ -19,8 +19,19 @@ _DECIDE_FUNCTION = {
         "type": "object",
         "properties": {
             "kind": {"type": "string", "enum": [k.value for k in ActionKind]},
-            "target_ref": {"type": "string"},
-            "text_value": {"type": "string"},
+            "target_ref": {
+                "type": "string",
+                "description": "The 'ref' of the element to act on, copied exactly from the "
+                "observation's visible elements. Omit for navigate/wait/done/stuck, and omit "
+                "for read_text when reading a labeled data field (use text_value instead).",
+            },
+            "text_value": {
+                "type": "string",
+                "description": "Text to type, URL to navigate to, option to select, OR -- for "
+                "kind=read_text on a labeled data field with no target_ref -- the exact label "
+                "string copied from the observation's readable data fields (e.g. 'Savings Balance:'). "
+                "Required for read_text when no target_ref applies; omit for click/done/stuck.",
+            },
             "reasoning": {"type": "string"},
             "stuck_reason": {"type": "string"},
         },
@@ -49,6 +60,9 @@ class OpenAIProvider(LLMProvider):
             f'- ref={e.ref} role={e.role} name="{e.name}"' + (f' value="{e.value}"' if e.value else "")
             for e in observation.elements
         )
+        labels_desc = (
+            ", ".join(observation.labels) if observation.labels else "(none)"
+        )
         history_desc = "\n".join(
             f"{i + 1}. {a.kind.value} ref={a.target_ref} value={a.text_value} -- {a.reasoning}"
             for i, a in enumerate(history)
@@ -57,7 +71,10 @@ class OpenAIProvider(LLMProvider):
         prompt = (
             f"Goal: {goal}\n\n"
             f"Current page: {observation.title} ({observation.url})\n\n"
-            f"Visible elements:\n{elements_desc}\n\n"
+            f"Visible interactive elements (click/type/select via target_ref):\n{elements_desc}\n\n"
+            f"Readable data fields on this page (labels only, not their current values -- "
+            f"to read one, use kind=read_text with text_value set to the exact label string "
+            f"below, and no target_ref):\n{labels_desc}\n\n"
             f"Actions taken so far:\n{history_desc}\n\n"
             "Propose exactly one next action via propose_action. Use kind=done if the "
             "goal is already achieved. Use kind=stuck (with stuck_reason) if you cannot "

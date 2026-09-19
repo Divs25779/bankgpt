@@ -40,7 +40,23 @@ from pydantic import BaseModel, Field, model_validator
 
 class LocatorStrategy(str, Enum):
     ROLE_NAME = "role_name"     # accessibility tree: role + accessible name (preferred)
-    TEXT = "text"                # visible text match (legacy tables, no roles)
+    TEXT = "text"                # visible text PRESENCE match (checkpoints, business outcomes,
+                                  # escalation triggers) -- value={"contains": "..."}. Asserts
+                                  # this text exists; does not itself locate a readable VALUE.
+    LABEL_SIBLING = "label_sibling"
+    # Locate the element whose text exactly matches value["label"], then
+    # target its immediate next sibling in DOM order as the thing to
+    # read. Exists specifically for legacy "label cell, value cell"
+    # table layouts (see mock_bank_app's member-detail table) where the
+    # value itself has no role or accessible name of its own -- only
+    # its neighboring label does. Deliberately a DISTINCT strategy from
+    # TEXT rather than an overload of it: a Step should be
+    # understandable from its own fields, not require knowing "TEXT
+    # means something different here because this happens to be a
+    # READ_TEXT action." Scope: only works when label and value are
+    # DOM-adjacent siblings (the common case); a value nested deeper or
+    # separated from its label needs a different strategy -- see
+    # REPORT.md section 7.
     CSS = "css"                  # last resort -- brittle, flagged in review
     XPATH = "xpath"               # last resort -- brittle, flagged in review
 
@@ -106,13 +122,41 @@ class ActionType(str, Enum):
     SELECT = "select"
     WAIT_FOR = "wait_for"
     READ_TEXT = "read_text"
-    DISMISS_IF_PRESENT = "dismiss_if_present"  # for known recoverable interstitials
+    DISMISS_IF_PRESENT = "dismiss_if_present"
+    # ^ For a recoverable interstitial that is itself a page ELEMENT (e.g. a
+    # dismissible banner/toast) -- a distinct step with its own target Locator.
+    # NOT for native browser dialogs (confirm/alert/prompt) -- those are
+    # handled via Step.expects_dialog on the step that triggers them,
+    # because they fire synchronously inside that call and have no
+    # separate DOM element of their own to target. See DialogPolicy.
 
 
 class RiskLevel(str, Enum):
     SAFE = "safe"                              # read-only, fully reversible
     RISKY_REVERSIBLE = "risky_reversible"       # mutates state but can be undone
     RISKY_IRREVERSIBLE = "risky_irreversible"    # cannot be undone (e.g. submit transfer)
+
+
+class DialogPolicy(str, Enum):
+    """
+    How to handle a native browser dialog (confirm/alert/prompt/beforeunload)
+    that fires as a synchronous side effect of executing a step.
+
+    This is deliberately attached to the STEP that triggers the dialog,
+    not modeled as its own separate step in `steps`. A dialog fires
+    *inside* the Playwright call that causes it (e.g. click()), which
+    blocks until something handles the dialog -- there is no way to
+    execute "click" and then, as a later, separate step, "accept the
+    dialog"; the handler must already be registered before the
+    triggering call runs. Attaching the policy as data on the triggering
+    step keeps this a purely local rule for the replay executor ("before
+    running this step, register the matching one-shot handler if
+    expects_dialog is set") instead of needing to look ahead one step
+    and couple the two together mechanically.
+    """
+
+    ACCEPT = "accept"
+    DISMISS = "dismiss"
 
 
 class Step(BaseModel):
@@ -131,6 +175,12 @@ class Step(BaseModel):
     )
     checkpoint: Optional[Checkpoint] = None
     risk: RiskLevel = RiskLevel.SAFE
+    expects_dialog: Optional[DialogPolicy] = Field(
+        default=None,
+        description="Set if executing this step is known (from discovery) to trigger a "
+        "native browser dialog. The replay executor must register the matching one-shot "
+        "dialog handler BEFORE executing this step -- see DialogPolicy docstring.",
+    )
     notes: Optional[str] = None
 
 
@@ -261,7 +311,22 @@ class CapabilityArtifact(BaseModel):
     outputs: list[OutputField]
     steps: list[Step]
     business_outcomes: list[BusinessOutcome] = Field(default_factory=list)
+    escalation_triggers: list[EscalationTrigger] = Field(
+        default_factory=list,
+        description="Anticipated conditions this capability knows it cannot resolve on its "
+        "own (e.g. session expiry) -- checked before falling through to hard_failure. "
+        "See EscalationTrigger docstring.",
+    )
     success_checkpoint: Checkpoint
+
+    escalate_on_unclassified_hard_failure: bool = Field(
+        default=True,
+        description="If true (default), even a hard_failure that matches no declared "
+        "business_outcome or escalation_trigger is routed to a human before being "
+        "returned to the caller -- 'silently fail' is worse than 'ask a person' for "
+        "regulated financial workflows. Set false per-artifact for low-stakes, "
+        "read-only capabilities where fail-fast to the caller is preferable.",
+    )
 
     review_status: ReviewStatus = ReviewStatus.DRAFT
     max_risk_level: RiskLevel = RiskLevel.SAFE  # derived; see validator below
@@ -289,6 +354,14 @@ class CapabilityArtifact(BaseModel):
 
 # ---------------------------------------------------------------------------
 # Replay result contract (see REPORT.md section 3 for the taxonomy rationale)
+#
+# Evaluation priority at every checkpoint during replay (src/replay/executor.py):
+#   1. success_checkpoint matched            -> SUCCESS
+#   2. a declared BusinessOutcome matched      -> BUSINESS_OUTCOME (a typed answer, not an error)
+#   3. a declared EscalationTrigger matched    -> ESCALATED (artifact knows it can't resolve this)
+#   4. nothing matched within timeout          -> HARD_FAILURE, and if
+#      escalate_on_unclassified_hard_failure is true (default), routed to a
+#      human before being returned to the caller -- see EscalationManager.
 # ---------------------------------------------------------------------------
 
 class ReplayStatus(str, Enum):

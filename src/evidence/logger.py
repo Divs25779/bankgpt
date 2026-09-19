@@ -26,6 +26,28 @@ from typing import Any, Optional
 from src.safety.redaction import redact_dict, redact_text
 
 
+def _redact_recursive(value: Any, sensitive_values: list[str] | None) -> Any:
+    """
+    Applies redact_text to every string, at any depth, inside a value
+    that may be an arbitrarily nested combination of dict/list/scalar.
+
+    This exists because a shallow, top-level-only redaction is a real
+    gap for how this logger actually gets called: it's natural to log a
+    turn as {"action": {...nested pydantic dump including free-text
+    "reasoning"...}}, and reasoning is exactly the field most likely to
+    contain incidental PII the model read off-screen. Redacting only
+    top-level string values would silently let that through. Every
+    string leaf, however deeply nested, must go through redact_text.
+    """
+    if isinstance(value, str):
+        return redact_text(value, sensitive_values)
+    if isinstance(value, dict):
+        return {k: _redact_recursive(v, sensitive_values) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_recursive(v, sensitive_values) for v in value]
+    return value
+
+
 @dataclass
 class EvidenceEvent:
     run_id: str
@@ -55,10 +77,7 @@ class EvidenceLogger:
         a11y_snapshot_path: str | None = None,
     ) -> None:
         safe_detail = redact_dict(detail, sensitive_keys or set())
-        safe_detail = {
-            k: (redact_text(v, sensitive_values) if isinstance(v, str) else v)
-            for k, v in safe_detail.items()
-        }
+        safe_detail = _redact_recursive(safe_detail, sensitive_values)
         record = EvidenceEvent(
             run_id=self.run_id,
             run_type=self.run_type,
