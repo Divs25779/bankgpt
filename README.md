@@ -7,11 +7,10 @@ path an AI agent invokes in production. See `REPORT.md` for the full design writ
 
 ## Status
 
-Scaffolding in place: artifact schema, provider-agnostic LLM interface (Anthropic + OpenAI),
-safety/allowlist, redaction, and evidence logging are implemented. The agent loop, replay
-executor, escalation manager, and mock target app are in progress -- see inline `TODO` /
-`NotImplementedError` markers in `src/agent/`, `src/replay/`, `src/escalation/`, and
-`mock_bank_app/`.
+End-to-end vertical slice complete: discovery loop, artifact schema + compiler, deterministic
+replay executor, escalation manager, safety/allowlist, redaction, evidence logging, and the mock
+target app are all implemented and have been run for real (see `/evidence/` and `/artifacts/`).
+See `REPORT.md` section 7 for what was deliberately cut or left thin.
 
 ## Setup
 
@@ -33,13 +32,12 @@ playwright install chromium
 Once your venv is active, always invoke `python` (not `python3`) so you don't accidentally
 fall through to a global interpreter outside the venv.
 
-**API key:** create `.env` and fill in your real key:
-```OPENAI_API_KEY= your_key```
-or
-```ANTHROPIC_API_KEY= your_key```
-
+**API key:** copy `.env.example` to `.env` and fill in your real key:
+```bash
+cp .env.example .env   # Windows: copy .env.example .env
+```
 `.env` is read automatically (via `python-dotenv`) and is gitignored -- it will never be committed.
-Never put a real key directly into `.env`, `README.md`, or any tracked file.
+Never put a real key directly into `.env.example`, `README.md`, or any tracked file.
 
 Run the mock target app (in a separate terminal, **from the repo root** -- it's a package,
 so `python mock_bank_app/main.py` directly will fail with a `ModuleNotFoundError`):
@@ -75,15 +73,19 @@ python -m src.agent.cli \
   --output savings_balance="Savings Balance:" \
   --save-as artifacts/lookup_and_open_subaccount.json
 
-# 2. Deterministic replay: no LLM, same artifact, new input (once src/replay is implemented)
+# 2. Deterministic replay: no LLM, same artifact, new input
 python -m src.replay.cli \
   --artifact artifacts/lookup_and_open_subaccount.json \
   --input member_id=67890 --input deposit_amount=250
 
-# 3. Replay against a deliberately-injected error condition (evidence requirement)
+# 3. Replay against a deliberately-injected error condition (evidence requirement) --
+# member 00000 triggers the declared "member_not_found" business outcome
 python -m src.replay.cli \
   --artifact artifacts/lookup_and_open_subaccount.json \
-  --input member_id=00000 --input deposit_amount=250   # mock app returns "no such member"
+  --input member_id=00000 --input deposit_amount=250
+
+# Add --headless to run without a visible window, or --no-human to disable the
+# EscalationManager for unattended runs (any escalation becomes an immediate hard_failure).
 ```
 
 The browser runs headed by default (`--headless` to disable) -- watch it drive the app live during

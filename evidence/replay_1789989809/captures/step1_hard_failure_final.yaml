@@ -1,0 +1,6 @@
+- table:
+  - rowgroup:
+    - row "Session Expired":
+      - cell "Session Expired"
+    - row "Your session has timed out due to inactivity. Please have an operator re-authenticate to continue working with member \"00002\".":
+      - cell "Your session has timed out due to inactivity. Please have an operator re-authenticate to continue working with member \"00002\"."

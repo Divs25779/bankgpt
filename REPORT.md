@@ -70,8 +70,6 @@ See `src/artifact/schema.py`. Design rationale:
 
 ## 3. Determinism & error handling
 
-[TODO: finalize once replay executor is implemented]
-
 Result taxonomy (`ReplayResult` / `ReplayStatus`), evaluated in this priority order at every
 checkpoint:
 
@@ -123,6 +121,45 @@ Determinism is achieved by: no model in the replay decision loop at all; locator
 tried in a fixed order; explicit checkpoints (not "the click didn't throw") gating every
 state-changing step.
 
+**Checkpoints are evaluated against a combined text surface (title + URL + visible body text),
+not title or body alone.** Our own compiler builds per-step checkpoints from the resulting page's
+*title* ("page advanced to 'Member Detail'"), while business outcomes and escalation triggers are
+typically authored against *body* text -- e.g. the mock app's not-found page has title "No Member
+Found" but body text "No member found matching ID..."; the declared `contains="No member found"`
+(lowercase) only matches the body, not the title. The schema doesn't record which surface an
+assertion was written against, so the executor checks the union of both -- the only choice that
+makes every assertion actually resolvable without adding a field nobody populates today.
+
+**Locator resolution logs which strategy actually resolved**, including whether it was a fallback
+rather than the primary -- the same "which locator won" signal named in section 4 as the future
+drift-detection hook, now actually emitted (`"act"` events in the evidence log).
+
+**Three real bugs were found and fixed through actual replay testing, not just review, worth
+recording honestly:**
+1. *Dialog handlers accumulated across steps.* The first version registered a fresh one-shot
+   listener per step; `.once()` only removes itself after firing, so steps with no dialog left
+   theirs registered indefinitely, and by the time the real confirm() fired, several stale
+   listeners raced to handle the same dialog -- producing `"Cannot dismiss dialog which is
+   already handled!"` and making accept-vs-dismiss a race rather than a decision. Fixed by
+   registering exactly one persistent handler for the whole run, driven by which step is
+   currently executing (mirroring how `src/agent/loop.py` already does this correctly).
+2. *`LABEL_SIBLING` targeted the wrong element.* `get_by_text(exact=True)` resolves to the
+   innermost element with that exact text -- for `<td><b>Label:</b></td>`, that's the `<b>`, which
+   has no siblings of its own. The fix climbs to the nearest enclosing `<td>` first
+   (`ancestor-or-self::td[1]/following-sibling::*[1]`), and verifies the sibling actually resolves
+   to something *before* considering the locator successful, rather than returning a lazy,
+   possibly-empty Locator that only fails much later when something calls `.inner_text()` and
+   hangs for Playwright's full default timeout.
+3. *An unresolved escalation could be silently treated as success.* After a human resumed from an
+   escalation, the code re-checked the step's outcome but only had explicit branches for
+   `business_outcome` and `hard_failure` -- if the re-check came back `escalated` again (the human
+   resumed without actually fixing anything), neither branch matched, and execution fell through
+   to the success path unguarded. Confirmed in testing: escalating on a simulated session-expiry,
+   resuming without fixing it, and watching the executor proceed to the next step anyway. Fixed by
+   making the post-re-check handling exhaustive -- escalate at most once per step, then require an
+   explicit `status == "ok"` before treating anything as a pass, with every other outcome
+   (including "still escalated") becoming a clear, honest hard failure instead of a silent one.
+
 ## 4. Heterogeneity & multi-tenant
 
 **Surface abstraction.** The seam between "how we perceive/act on a surface" and "the recorded
@@ -145,8 +182,6 @@ keep running or silently fail.
 
 ## 5. Escalation & handoff
 
-[TODO: finalize once implemented]
-
 The browser runs headed, locally, so "the human takes control of the live session" is literally
 true -- there is one browser window, and control is a logical flag (`Controller.AUTOMATION` /
 `Controller.HUMAN`) the automation checks before every action, not a separate session that needs
@@ -164,10 +199,12 @@ trigger, demonstrating both the "known-unknown" and "unknown-unknown" escalation
 
 On either an `EscalationTrigger` match or an unclassified `hard_failure`, an `InterventionRequest`
 is written to evidence with full context (goal/capability, step, URL, screenshot, reason) and
-control flips to human. A minimal control surface lets the human signal resume once done; the loop
-re-observes state before continuing rather than trusting stale state -- the human may have fixed
-the underlying condition (e.g. re-authenticated) or may not have, and the automation should not
-assume either. Full action-by-action capture of what the human does inside the browser is out of
+control flips to human. The control surface itself is a terminal prompt (`EscalationManager`) --
+deliberately bare, per the brief's explicit allowance for a "bare/mock operator surface" -- but the
+parts that must be real all are: automation genuinely stops touching the page, the human operates
+the SAME visible browser window (headed throughout), and an explicit "resume" is required to hand
+control back; the executor then re-checks the step's outcome from scratch rather than assuming the
+human fixed it. Full action-by-action capture of what the human does inside the browser is out of
 scope (see section 7) -- the fact and duration of the handoff is logged; the human's individual
 clicks are not.
 
