@@ -47,7 +47,7 @@ flowchart LR
     %% =========================
     %% EVIDENCE
     %% =========================
-    EVIDENCE["evidence/artifacts/*.json<br/>+ evidence/&lt;run_id&gt;/events.jsonl<br/>(+ captures/)"]
+    EVIDENCE["evidence/artifacts/*.json<br/>+ evidence/{run_id}/events.jsonl<br/>(+ captures/)"]
 
     ART --> EVIDENCE
 
