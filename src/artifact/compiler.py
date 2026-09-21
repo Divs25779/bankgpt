@@ -38,6 +38,7 @@ from src.artifact.schema import (
     Checkpoint,
     CapabilityArtifact,
     DialogPolicy,
+    EscalationTrigger,
     InputParam,
     Locator,
     LocatorStrategy,
@@ -112,6 +113,7 @@ def compile_artifact(
     business_outcomes: list[BusinessOutcome],
     turns: list[DiscoveryTurn],
     success_checkpoint: Checkpoint,
+    escalation_triggers: list[EscalationTrigger] | None = None,
 ) -> CapabilityArtifact:
     """
     `turns` is the discovery run's turns, in order, for the successful
@@ -119,6 +121,13 @@ def compile_artifact(
     turns from a run that actually reached the goal -- the compiler does
     not re-verify success; that's the agent loop's job during discovery
     and the replay executor's job on every subsequent invocation.
+
+    `escalation_triggers`, like `business_outcomes`, is DECLARED
+    knowledge about the target app, not something derivable from one
+    successful run -- a happy-path discovery run never encounters
+    "session expired", so there is nothing in `turns` to infer it from.
+    The caller supplies both from having explored the app's failure
+    modes directly (see mock_bank_app's documented error-injection IDs).
     """
 
     steps: list[Step] = []
@@ -189,6 +198,7 @@ def compile_artifact(
         outputs=outputs,
         steps=steps,
         business_outcomes=business_outcomes,
+        escalation_triggers=escalation_triggers or [],
         success_checkpoint=success_checkpoint,
         review_status=ReviewStatus.DRAFT,
     )

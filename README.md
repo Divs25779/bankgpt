@@ -20,8 +20,6 @@ macOS/Linux:
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
-export LLM_PROVIDER=anthropic          # or: openai
-export ANTHROPIC_API_KEY=sk-...        # or: export OPENAI_API_KEY=sk-...
 ```
 
 Windows (PowerShell/cmd):
@@ -30,12 +28,18 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 playwright install chromium
-set LLM_PROVIDER=anthropic
-set ANTHROPIC_API_KEY=sk-...
 ```
 
 Once your venv is active, always invoke `python` (not `python3`) so you don't accidentally
 fall through to a global interpreter outside the venv.
+
+**API key:** create `.env` and fill in your real key:
+```OPENAI_API_KEY= your_key```
+or
+```ANTHROPIC_API_KEY= your_key```
+
+`.env` is read automatically (via `python-dotenv`) and is gitignored -- it will never be committed.
+Never put a real key directly into `.env`, `README.md`, or any tracked file.
 
 Run the mock target app (in a separate terminal, **from the repo root** -- it's a package,
 so `python mock_bank_app/main.py` directly will fail with a `ModuleNotFoundError`):
@@ -56,28 +60,35 @@ This serves http://localhost:5000. Try it manually first:
 - On the deposit form, entering `999999` produces an unmapped system error (the alternate
   "unhandled validation error" hard-failure scenario, kept available alongside session expiry).
 
-## Demo path (once implemented)
+## Demo path
 
 ```bash
-# 1. Discovery run: LLM drives the mock app to accomplish a goal, produces an artifact
-python3 -m src.agent.cli \
-  --goal "look up member 12345 and read their current savings balance" \
+# 1. Discovery run: LLM drives the mock app to accomplish a goal, produces an artifact.
+# This goal deliberately combines both of the assignment's own example goals into one
+# run, so the single required discovery run exercises interactive elements (search,
+# form fill, click), label-based data reading, AND the native confirm() dialog.
+python -m src.agent.cli \
+  --goal "Search for member 12345, read their current savings balance, then open a new sub-account for them with an initial deposit of 500 and reach the confirmation screen" \
   --target http://localhost:5000 \
-  --save-as artifacts/lookup_member_balance.json
+  --param member_id=12345 \
+  --param deposit_amount=500 \
+  --output savings_balance="Savings Balance:" \
+  --save-as artifacts/lookup_and_open_subaccount.json
 
-# 2. Deterministic replay: no LLM, same artifact, new input
-python3 -m src.replay.cli \
-  --artifact artifacts/lookup_member_balance.json \
-  --input member_id=67890
+# 2. Deterministic replay: no LLM, same artifact, new input (once src/replay is implemented)
+python -m src.replay.cli \
+  --artifact artifacts/lookup_and_open_subaccount.json \
+  --input member_id=67890 --input deposit_amount=250
 
 # 3. Replay against a deliberately-injected error condition (evidence requirement)
-python3 -m src.replay.cli \
-  --artifact artifacts/lookup_member_balance.json \
-  --input member_id=00000    # mock app returns "no such member" for this id
+python -m src.replay.cli \
+  --artifact artifacts/lookup_and_open_subaccount.json \
+  --input member_id=00000 --input deposit_amount=250   # mock app returns "no such member"
 ```
 
-Evidence for both runs is written to `evidence/<run_id>/events.jsonl` plus screenshots/accessibility
-snapshots in `evidence/<run_id>/captures/`.
+The browser runs headed by default (`--headless` to disable) -- watch it drive the app live during
+discovery. Evidence for both runs is written to `evidence/<run_id>/events.jsonl` plus
+screenshots/accessibility snapshots in `evidence/<run_id>/captures/`.
 
 ## Running without live services
 

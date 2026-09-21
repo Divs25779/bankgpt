@@ -87,13 +87,23 @@ def run_discovery(
     dialogs_fired = []
 
     def handle_dialog(dialog):
-        dialogs_fired.append(
-            DialogEvent(
-                message=dialog.message,
-                dialog_type=dialog.type,
-                policy="accept"
-            )
+        event = DialogEvent(
+            message=dialog.message,
+            dialog_type=dialog.type,
+            policy="accept"
         )
+        dialogs_fired.append(event)
+        # Log at the moment it fires, not just when it later gets attached
+        # to a DiscoveryTurn -- otherwise the raw evidence trail has no
+        # record a dialog happened at all, only the *compiled artifact*
+        # would show it (via expects_dialog), which defeats the point of
+        # "dialogs must be real, not silently swallowed" if the log
+        # itself stays silent about it.
+        logger.log("dialog", {
+            "message": event.message,
+            "dialog_type": event.dialog_type,
+            "policy": event.policy,
+        })
         dialog.accept()
 
     page.on("dialog", handle_dialog)
