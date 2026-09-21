@@ -9,8 +9,9 @@ path an AI agent invokes in production. See `REPORT.md` for the full design writ
 
 End-to-end vertical slice complete: discovery loop, artifact schema + compiler, deterministic
 replay executor, escalation manager, safety/allowlist, redaction, evidence logging, and the mock
-target app are all implemented and have been run for real (see `/evidence/` and `/artifacts/`).
-See `REPORT.md` section 7 for what was deliberately cut or left thin.
+target app are all implemented and have been run for real (see `/evidence/`, which holds both the
+saved capability artifact and the discovery/replay run logs -- see section 6 of the assignment
+brief's deliverable list). See `REPORT.md` section 7 for what was deliberately cut or left thin.
 
 ## Setup
 
@@ -71,17 +72,17 @@ python -m src.agent.cli \
   --param member_id=12345 \
   --param deposit_amount=500 \
   --output savings_balance="Savings Balance:" \
-  --save-as artifacts/lookup_and_open_subaccount.json
+  --save-as evidence/artifacts/lookup_and_open_subaccount.json
 
 # 2. Deterministic replay: no LLM, same artifact, new input
 python -m src.replay.cli \
-  --artifact artifacts/lookup_and_open_subaccount.json \
+  --artifact evidence/artifacts/lookup_and_open_subaccount.json \
   --input member_id=67890 --input deposit_amount=250
 
 # 3. Replay against a deliberately-injected error condition (evidence requirement) --
 # member 00000 triggers the declared "member_not_found" business outcome
 python -m src.replay.cli \
-  --artifact artifacts/lookup_and_open_subaccount.json \
+  --artifact evidence/artifacts/lookup_and_open_subaccount.json \
   --input member_id=00000 --input deposit_amount=250
 
 # Add --headless to run without a visible window, or --no-human to disable the
@@ -90,7 +91,8 @@ python -m src.replay.cli \
 
 The browser runs headed by default (`--headless` to disable) -- watch it drive the app live during
 discovery. Evidence for both runs is written to `evidence/<run_id>/events.jsonl` plus
-screenshots/accessibility snapshots in `evidence/<run_id>/captures/`.
+screenshots/accessibility snapshots in `evidence/<run_id>/captures/`; saved capability artifacts
+live in `evidence/artifacts/`.
 
 ## Running without live services
 
@@ -113,6 +115,7 @@ src/
   escalation/   stuck detection + human handoff
   evidence/     structured logging
 mock_bank_app/  local legacy-style target surface (table layout, no test IDs)
-artifacts/      saved capability artifacts
-evidence/       per-run logs and captures
+evidence/
+  artifacts/    saved capability artifacts (the reusable, agent-invocable capabilities)
+  <run_id>/     per-run discovery/replay logs (events.jsonl) and failure captures
 ```

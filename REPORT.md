@@ -2,7 +2,85 @@
 
 ## 1. Architecture
 
-[TODO: final diagram + prose once agent loop / replay / escalation are wired end to end]
+```mermaid
+flowchart LR
+
+    %% =========================
+    %% DISCOVERY
+    %% =========================
+    subgraph DISCOVERY["DISCOVERY (LLM in the loop)"]
+        direction TB
+
+        CLI["src/agent/cli.py"]
+        LLM["LLMProvider<br/>(src/llm/)"]
+        DISC["run_discovery()<br/>(src/agent/loop.py)"]
+        OBS["capture_observation()<br/>(src/agent/perception.py)"]
+        DG["PolicyGate"]
+
+        CLI --> LLM
+        LLM --> DISC
+        DISC --> OBS
+        OBS --> DISC
+        DISC --> DG
+    end
+
+    %% =========================
+    %% PLAYWRIGHT / BROWSER
+    %% =========================
+    PW["Playwright<br/>(headed)<br/><br/>observe → decide → act"]
+
+    DISC <--> PW
+
+    MODEL["Claude / GPT-4.1"]
+    LLM --- MODEL
+
+    %% =========================
+    %% ARTIFACT COMPILATION
+    %% =========================
+    COMP["compile_artifact()<br/>(src/artifact/compiler.py)"]
+
+    ART["CapabilityArtifact (JSON)<br/>(src/artifact/schema.py)"]
+
+    DG --> COMP
+    COMP --> ART
+
+    %% =========================
+    %% EVIDENCE
+    %% =========================
+    EVIDENCE["evidence/artifacts/*.json<br/>+ evidence/&lt;run_id&gt;/events.jsonl<br/>(+ captures/)"]
+
+    ART --> EVIDENCE
+
+    %% =========================
+    %% REPLAY
+    %% =========================
+    subgraph REPLAY["REPLAY (no LLM, production path)"]
+        direction TB
+
+        RCLI["src/replay/cli.py"]
+        PG["PolicyGate<br/>(src/safety/)"]
+        RA["replay_artifact()<br/>(src/replay/executor.py)"]
+        EM["EscalationManager<br/>(src/escalation/)"]
+
+        RCLI --> PG
+        PG --> RA
+        RA --> EM
+    end
+
+    %% Artifact consumed by replay
+    ART --> RA
+
+    %% Replay resolves artifact capabilities
+    RA --> RES["resolves<br/>Locators<br/>Checkpoints<br/>BusinessOutcomes<br/>EscalationTriggers"]
+    
+```
+
+This is not a hypothetical diagram -- every arrow above has been exercised against a real target
+(`mock_bank_app/`) with real evidence on disk: a genuine LLM-driven discovery run producing
+`evidence/artifacts/lookup_and_open_subaccount.json`, and multiple replay runs against that same
+artifact covering success (different member, correct parameterized output), a declared business
+outcome (`member_not_found`), and a declared escalation trigger (`session_expired`) that correctly
+surfaces as a hard failure when a human resumes without actually resolving it -- see section 3.
 
 Key decisions made up front:
 
@@ -237,4 +315,48 @@ its own classification -- see section 7.
   adjacent siblings in DOM order. This covers the common case for legacy enterprise detail screens,
   but extracting a value nested deeper or separated from its label would require a more general
   extraction strategy (e.g., CSS fallbacks or spatial bounding) -- noted as a future enhancement.
-- **[TODO: fill in honestly once the build is done]** e.g. multi-tenant override resolution designed but not implemented; desktop surface not implemented; operator UI is a bare CLI, not a real console; LLM-assisted single-step recovery on replay failure not built; multi-run stability scoring not built.
+- **Multi-tenant override resolution is designed, not implemented.** Section 4 describes how a
+  tenant-specific override artifact (`TargetAppRef.tenant_id` set) would be resolved before falling
+  back to a base artifact recorded against the vendor product -- no code implements that lookup, and
+  no second tenant variant was recorded to demonstrate it. Would be the first thing built with more
+  time, since it's the part of the brief we could only describe rather than show.
+- **`version_fingerprint` is a schema field with nothing populating it.** The drift-detection story
+  in section 4 depends on comparing a recorded fingerprint against what replay currently observes --
+  the field exists on `TargetAppRef` but neither discovery nor replay ever computes or checks it.
+  Right now the only drift signal that actually exists is the fallback-locator log line (section 3).
+- **Desktop surface: design only.** Section 4's claim that the `Locator` abstraction maps onto a
+  native app's UI Automation/MSAA tree is architectural reasoning, not something exercised against
+  an actual desktop app.
+- **The operator surface is a bare terminal prompt** (`EscalationManager`), not a real console --
+  explicitly allowed by the brief's "bare/mock operator surface" language (section 5), but worth
+  naming plainly rather than dressing it up.
+- **What the human does during a handoff is not captured action-by-action** -- only that a handoff
+  happened, why, and how long it took (section 5). A full co-browsing replay of the human's own
+  clicks is the explicitly-out-of-scope full version of this.
+- **The risk classifier is a keyword heuristic**, not real risk analysis (section 6) -- it saw
+  "open" in the model's own reasoning text for a step that was actually just navigation, and tagged
+  it `risky_reversible` when it wasn't really mutating anything. Errs conservative (over-flagging,
+  never under-flagging), which is the safer failure direction, but it's pattern-matching on
+  free text, not reasoning about the action's real effect.
+- **The `draft` → `approved` promotion path has no workflow.** `PolicyGate.check_risk` genuinely
+  enforces that an irreversible step can't run unattended unless `review_status == approved`, but
+  nothing promotes an artifact from draft to approved except hand-editing the saved JSON. A real
+  system needs a review UI or a promotion CLI command; neither was built.
+- **Icon-only / unnamed interactive elements are unreachable.** `perception.py` skips any element
+  with no quoted accessible name rather than risk a silent mis-mapping via `get_by_role(name=None)`
+  matching every element of that role -- see its module docstring. Fine for this mock app (every
+  control has a label), not fine for a real legacy app with unlabelled icon buttons.
+- **`LABEL_SIBLING` only covers immediately-adjacent DOM siblings** (e.g. two `<td>`s in the same
+  row) -- a value nested deeper or separated from its label needs a different extraction strategy.
+  Covers the common legacy-table case demonstrated here, not the general one.
+- **No automated test suite.** `pytest` is in `requirements.txt` and unused -- correctness here was
+  established by tracing real evidence logs against the design after each run (see the three bugs
+  found and fixed in section 3), not by a repeatable regression suite. Given more time, this is the
+  next highest-value addition: unit tests for the compiler's turn→step conversion and the assertion
+  polling logic would have caught at least the `LABEL_SIBLING` sibling-resolution bug and the
+  post-escalation fallthrough bug (section 3) before they ever needed a live browser to surface.
+- **Stretch goals not attempted, by choice** (the brief asks for at most one or two, depth over
+  breadth; we spent that budget on getting the core loop genuinely correct instead): an
+  agent-facing capability catalog/API endpoint, code generation from an artifact, confidence
+  scoring across repeated replays, and cross-tenant canonicalization demonstration were all left
+  undone rather than built thin.
