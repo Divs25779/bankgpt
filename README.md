@@ -94,6 +94,19 @@ discovery. Evidence for both runs is written to `evidence/<run_id>/events.jsonl`
 screenshots/accessibility snapshots in `evidence/<run_id>/captures/`; saved capability artifacts
 live in `evidence/artifacts/`.
 
+## Running tests
+
+```bash
+pytest
+```
+
+No API key and no running `mock_bank_app` needed -- `tests/test_compiler.py` is pure unit tests
+against Pydantic objects, and `tests/test_replay_executor.py` uses Playwright's `page.set_content(...)`
+against tiny inline HTML fixtures rather than a live server (the `chromium` browser installed
+earlier via `playwright install chromium` is reused automatically). These are regression tests for
+the three real bugs found and fixed during development -- see `REPORT.md` section 3 for the
+original writeups and section 7 for what test coverage does *not* yet include.
+
 ## Running without live services
 
 The safety and schema layers (`src/artifact`, `src/safety`, `src/evidence`) have no external

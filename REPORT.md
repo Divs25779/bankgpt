@@ -277,12 +277,17 @@ its own classification -- see section 7.
 - **`LABEL_SIBLING` only covers immediately-adjacent DOM siblings** (e.g. two `<td>`s in the same
   row) -- a value nested deeper or separated from its label needs a different extraction strategy.
   Covers the common legacy-table case demonstrated here, not the general one.
-- **No automated test suite.** `pytest` is in `requirements.txt` and unused -- correctness here was
-  established by tracing real evidence logs against the design after each run (see the three bugs
-  found and fixed in section 3), not by a repeatable regression suite. Given more time, this is the
-  next highest-value addition: unit tests for the compiler's turn→step conversion and the assertion
-  polling logic would have caught at least the `LABEL_SIBLING` sibling-resolution bug and the
-  post-escalation fallthrough bug (section 3) before they ever needed a live browser to surface.
+- **Test coverage is targeted, not comprehensive.** `tests/test_compiler.py` (pure unit tests, no
+  browser) and `tests/test_replay_executor.py` (Playwright-backed, via `page.set_content(...)`
+  fixtures rather than the full mock app) are regression tests for the exact three bugs found in
+  section 3 -- the pre/post-observation mixup, the missing `escalation_triggers` wiring, the
+  `LABEL_SIBLING` sibling-resolution bug, and the post-escalation silent-success bug all have a
+  test that would have caught them without ever needing a live discovery run or a human at a
+  terminal. Deliberately narrow: no coverage yet for `src/agent/loop.py` itself (would need a fake
+  `LLMProvider` to avoid real API calls in CI), the CLI entrypoints, or the mock app's routes.
+  Given more time, a fake provider returning scripted `ProposedAction` sequences would be the next
+  addition, letting the full discovery loop run in tests without an API key or a live browser
+  session driven by a real model.
 - **Stretch goals not attempted, by choice** (the brief asks for at most one or two, depth over
   breadth; we spent that budget on getting the core loop genuinely correct instead): an
   agent-facing capability catalog/API endpoint, code generation from an artifact, confidence
