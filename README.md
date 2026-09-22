@@ -87,6 +87,16 @@ python -m src.replay.cli \
 
 # Add --headless to run without a visible window, or --no-human to disable the
 # EscalationManager for unattended runs (any escalation becomes an immediate hard_failure).
+
+# 4. Stretch goal: multi-run stability -- replays N times, one shared evidence folder,
+# reports a success/business_outcome/escalated/hard_failure breakdown across attempts.
+python -m src.replay.cli \
+  --artifact evidence/artifacts/lookup_and_open_subaccount.json \
+  --input member_id=67890 --input deposit_amount=250 --repeat 5
+
+# 5. Stretch goal: confidence & approval -- promote a draft artifact to approved
+# (required before any risky_irreversible step in it may run unattended; see REPORT.md section 6)
+python -m src.artifact.approve --artifact evidence/artifacts/lookup_and_open_subaccount.json
 ```
 
 The browser runs headed by default (`--headless` to disable) -- watch it drive the app live during

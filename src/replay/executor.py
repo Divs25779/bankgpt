@@ -217,7 +217,14 @@ def _execute_action(page, step: Step, resolved, value: Optional[str]) -> None:
 # Evidence capture on failure
 # ---------------------------------------------------------------------------
 
-def _capture_failure_evidence(page, logger: EvidenceLogger, tag: str) -> list[str]:
+def _capture_failure_evidence(page, logger: EvidenceLogger, tag: str, attempt: Optional[int] = None) -> list[str]:
+    # attempt is prefixed onto the filename only -- it exists so
+    # --repeat N (multi-run stability, see src/replay/cli.py) doesn't
+    # have each attempt's failure captures overwrite the previous one.
+    # A single run (attempt=None, unchanged default) produces byte-for-
+    # byte the same paths as before this was added.
+    if attempt is not None:
+        tag = f"attempt{attempt}_{tag}"
     paths: list[str] = []
     capture_dir = logger.capture_dir()
     try:
@@ -248,6 +255,7 @@ def replay_artifact(
     logger: EvidenceLogger,
     page,  # playwright.sync_api.Page
     escalation: Optional[EscalationManager] = None,
+    attempt: Optional[int] = None,  # set only by --repeat N (src/replay/cli.py); see _capture_failure_evidence
 ) -> ReplayResult:
     start_time = time.time()
     outputs: dict = {}
@@ -290,7 +298,7 @@ def replay_artifact(
             except PolicyViolation as e:
                 logger.log("error", {"reason": "policy_violation", "step": step.index, "error": str(e)},
                            sensitive_values=sensitive_values)
-                evidence = _capture_failure_evidence(page, logger, f"step{step.index}_policy_violation")
+                evidence = _capture_failure_evidence(page, logger, f"step{step.index}_policy_violation", attempt=attempt)
                 return ReplayResult(
                     status=ReplayStatus.HARD_FAILURE,
                     artifact_id=artifact.id, artifact_version=artifact.version,
@@ -312,7 +320,7 @@ def replay_artifact(
         except (PlaywrightError, LocatorResolutionError) as e:
             logger.log("error", {"reason": "action_failed", "step": step.index, "error": str(e)},
                        sensitive_values=sensitive_values)
-            evidence = _capture_failure_evidence(page, logger, f"step{step.index}_action_failed")
+            evidence = _capture_failure_evidence(page, logger, f"step{step.index}_action_failed", attempt=attempt)
             return ReplayResult(
                 status=ReplayStatus.HARD_FAILURE,
                 artifact_id=artifact.id, artifact_version=artifact.version,
@@ -337,7 +345,7 @@ def replay_artifact(
             updated) (status, matched) -- never assumes the human fixed
             anything; the caller always re-derives status from a fresh
             _evaluate_step call, never from the fact that resume happened."""
-            evidence_paths = _capture_failure_evidence(page, logger, f"step{step.index}_{status}")
+            evidence_paths = _capture_failure_evidence(page, logger, f"step{step.index}_{status}", attempt=attempt)
             escalation.request_intervention(InterventionRequest(
                 run_id=logger.run_id, capability_id=artifact.id, step_index=step.index,
                 reason=reason_text, current_url=page.url,
@@ -381,7 +389,7 @@ def replay_artifact(
             # EscalationManager was available to begin with) or still
             # "hard_failure" after one escalation attempt -- all become a
             # hard failure here, never a silent pass-through.
-            evidence = _capture_failure_evidence(page, logger, f"step{step.index}_hard_failure_final")
+            evidence = _capture_failure_evidence(page, logger, f"step{step.index}_hard_failure_final", attempt=attempt)
             if status == "escalated" and escalation is None:
                 observed = f"escalation_trigger '{matched.name}' matched but no EscalationManager was provided"
             elif escalated_this_step:
@@ -420,7 +428,7 @@ def replay_artifact(
             duration_ms=int((time.time() - start_time) * 1000),
         )
 
-    evidence = _capture_failure_evidence(page, logger, "success_checkpoint_failed")
+    evidence = _capture_failure_evidence(page, logger, "success_checkpoint_failed", attempt=attempt)
     return ReplayResult(
         status=ReplayStatus.HARD_FAILURE,
         artifact_id=artifact.id, artifact_version=artifact.version,

@@ -52,6 +52,7 @@ from src.artifact.schema import (
 from src.llm.base import ActionKind, DialogEvent, Observation, ProposedAction
 
 _RISKY_VERB_HINTS = ("submit", "confirm", "open", "create", "delete", "transfer", "approve")
+_IRREVERSIBLE_VERB_HINTS = ("open", "create", "transfer", "delete", "approve")
 
 
 @dataclass
@@ -92,7 +93,13 @@ class DiscoveryTurn:
 def _risk_for(action: ProposedAction, dialog: Optional[DialogEvent]) -> RiskLevel:
     if dialog is not None:
         # A step that triggers a confirmation dialog is, definitionally,
-        # not a pure read -- trust this signal over the keyword heuristic.
+        # not a pure read. If the model's own reasoning also reads as an
+        # account-creation/money-movement verb, treat it as genuinely
+        # irreversible -- confirming to open a sub-account with a real
+        # deposit is not something a caller can casually undo. Absent
+        # such a hint, a confirmed dialog is still risky_reversible.
+        if any(hint in action.reasoning.lower() for hint in _IRREVERSIBLE_VERB_HINTS):
+            return RiskLevel.RISKY_IRREVERSIBLE
         return RiskLevel.RISKY_REVERSIBLE
     if action.kind in (ActionKind.CLICK,) and any(
         hint in action.reasoning.lower() for hint in _RISKY_VERB_HINTS

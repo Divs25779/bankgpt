@@ -127,6 +127,18 @@ Determinism is achieved by: no model in the replay decision loop at all; locator
 tried in a fixed order; explicit checkpoints (not "the click didn't throw") gating every
 state-changing step.
 
+**Stretch goal: multi-run stability.** `src/replay/cli.py --repeat N` replays the same artifact
+and inputs N times and reports a per-status breakdown (`success` / `business_outcome` /
+`escalated` / `hard_failure`) as a flakiness signal. Deliberately does NOT create N evidence run
+folders -- all attempts share one `EvidenceLogger` (one `run_id`), bracketed by `attempt_start`/
+`attempt_result` log lines and a final `stability_summary`; only failure-capture filenames are
+attempt-prefixed, to avoid one attempt's screenshot overwriting another's. `hard_failure` is
+treated as the only real stability red flag -- `business_outcome`/`escalated` are legitimate,
+expected alternate paths across repeated runs, not evidence the replay mechanics themselves are
+flaky. The `attempt` parameter threaded through `replay_artifact` defaults to `None` and changes
+nothing about a plain single replay -- the existing test suite (`tests/test_replay_executor.py`)
+exercises the unchanged default path.
+
 **Checkpoints are evaluated against a combined text surface (title + URL + visible body text),
 not title or body alone.** Our own compiler builds per-step checkpoints from the resulting page's
 *title* ("page advanced to 'Member Detail'"), while business outcomes and escalation triggers are
@@ -228,6 +240,25 @@ Known limits: the risk classifier used during artifact compilation is heuristic 
 model reasoning text) and always defaults to a human-reviewable `draft` state rather than trusting
 its own classification -- see section 7.
 
+**Stretch goal: confidence & approval.** `PolicyGate.check_risk` already enforced that a
+`risky_irreversible` step cannot run unattended unless `review_status == approved` -- what was
+missing was any way to actually promote an artifact other than hand-editing its JSON.
+`src/artifact/approve.py` is that missing piece: it prints the artifact's full risk profile
+(flagging any irreversible step explicitly), requires an interactive confirmation (or `--yes` for
+scripted use), and writes `review_status=approved` back to the file. While building this, one gap
+surfaced worth naming: `compile_artifact`'s risk heuristic previously never produced
+`risky_irreversible` at all -- meaning the enforcement branch, though correct, was dead code for
+anything the compiler actually output. Fixed alongside this: a confirmed dialog whose reasoning
+reads as an account-creation/money-movement verb (open/create/transfer/delete/approve) is now
+classified `risky_irreversible` rather than capping at `risky_reversible` -- e.g. confirming to
+open a sub-account with a real deposit is not something a caller can casually undo.
+
+This is demonstrated with real evidence, not just described: `evidence/replay_1790055204/` is five
+replay attempts against the (then still `draft`) artifact, every one correctly blocked at the
+confirm step with `policy_violation`; `evidence/replay_1790055872/` is the same artifact, same
+inputs, five attempts, all `success`, after `python -m src.artifact.approve` was run in between.
+See `evidence/README.md` for the full index of what each evidence folder demonstrates.
+
 ## 7. Cuts
 
 - **Data Extraction & Target Roles Filter (`cell` and `heading`):** The `cell` and `heading` roles
@@ -288,8 +319,12 @@ its own classification -- see section 7.
   Given more time, a fake provider returning scripted `ProposedAction` sequences would be the next
   addition, letting the full discovery loop run in tests without an API key or a live browser
   session driven by a real model.
-- **Stretch goals not attempted, by choice** (the brief asks for at most one or two, depth over
-  breadth; we spent that budget on getting the core loop genuinely correct instead): an
-  agent-facing capability catalog/API endpoint, code generation from an artifact, confidence
-  scoring across repeated replays, and cross-tenant canonicalization demonstration were all left
-  undone rather than built thin.
+- **Stretch goals: two attempted, the rest deliberately not** (the brief asks for at most one or
+  two, depth over breadth). Attempted: confidence & approval (`src/artifact/approve.py`, section 6)
+  and multi-run stability (`--repeat N`, section 3) -- both chosen because they were small,
+  additive, and closed real gaps already named in this section rather than opening new surface
+  area. Not attempted: an agent-facing capability catalog/API endpoint, code generation from an
+  artifact, and a cross-tenant canonicalization demonstration -- each would have meant real new
+  design (or, for assisted fallback, reintroducing an LLM into the replay path, which contradicts
+  this system's core "no model in the loop during replay" claim), not a small addition on top of
+  what already existed.
