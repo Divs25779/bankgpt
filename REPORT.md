@@ -30,15 +30,15 @@ Key decisions made up front:
   `page.locator("body").aria_snapshot()` (YAML, stable since Playwright v1.49), parsed with PyYAML
   plus a small per-leaf regex. Playwright v1.63.0 (released ~Sept 2026, about two weeks before this
   was written) added `ariaSnapshotJSON()`, which would have been a nicer shape to parse directly.
-  We didn't use it: the discovery run is the one requirement in this project that cannot be
+  I didn't use it: the discovery run is the one requirement in this project that cannot be
   mocked or allowed to be flaky, and building that on an API that had barely shipped -- with no
   way to fully verify its Python-binding behavior in the time available -- was the wrong place to
   take on version risk. Boring-and-proven beat new-and-nicer for this one path specifically.
-- **Our own per-turn element refs, not Playwright's native `aria-ref` mechanism** (the one
+- **My own per-turn element refs, not Playwright's native `aria-ref` mechanism** (the one
   Playwright's own MCP/AI tooling uses internally). That mechanism is explicitly documented as
   valid only within a single snapshot and goes stale the moment the page changes -- fine for an
   LLM's immediate next click, useless for a `CapabilityArtifact` a replay engine needs to resolve
-  months later against a *different* page load. We assign our own ephemeral ref (`e0`, `e1`, ...)
+  months later against a *different* page load. I assign my own ephemeral ref (`e0`, `e1`, ...)
   per observation, resolved via the fully public `page.get_by_role(role, name=...)` API. The model
   gets the same ergonomic benefit (pick an opaque id, never invent a selector); the artifact
   compiler converts the winning run's `(ref -> role/name)` pairs into a durable `Locator` the model
@@ -264,7 +264,7 @@ See `evidence/README.md` for the full index of what each evidence folder demonst
 - **Data Extraction & Target Roles Filter (`cell` and `heading`):** The `cell` and `heading` roles
   were deliberately removed from `TARGET_ROLES` in `perception.py` because they flooded the
   observation with noise, whereas the actual interactive elements were already captured perfectly.
-  To still support reading non-interactive data (like checking a savings balance), we implemented a
+  To still support reading non-interactive data (like checking a savings balance), I implemented a
   secondary pass that extracts labels (text ending in `:`) and exposes them directly to the model,
   separately from the interactive-element list. The compiler turns a chosen label into a dedicated
   `LABEL_SIBLING` locator strategy -- distinct from `TEXT` (which is reserved for plain
@@ -278,7 +278,7 @@ See `evidence/README.md` for the full index of what each evidence folder demonst
   tenant-specific override artifact (`TargetAppRef.tenant_id` set) would be resolved before falling
   back to a base artifact recorded against the vendor product -- no code implements that lookup, and
   no second tenant variant was recorded to demonstrate it. Would be the first thing built with more
-  time, since it's the part of the brief we could only describe rather than show.
+  time, since it's the part of the brief I could only describe rather than show.
 - **`version_fingerprint` is a schema field with nothing populating it.** The drift-detection story
   in section 4 depends on comparing a recorded fingerprint against what replay currently observes --
   the field exists on `TargetAppRef` but neither discovery nor replay ever computes or checks it.

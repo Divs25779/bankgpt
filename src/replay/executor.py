@@ -22,7 +22,7 @@ authoritative version of the priority order below):
     strategy fails to resolve to at least one element.
   - Checkpoint text assertions are checked against a COMBINED surface
     (title + url + visible body text), not title alone or body alone.
-    This matters concretely: our own compiler builds per-step checkpoints
+    This matters concretely: my own compiler builds per-step checkpoints
     from the resulting page's TITLE ("page advanced to 'X'"), while
     business_outcomes/escalation_triggers are typically authored against
     BODY text (e.g. "No member found" appears in the mock app's body,

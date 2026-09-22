@@ -31,7 +31,6 @@ CONTRACT (do not violate while filling this in):
     dialog later -- this was caught during design review specifically
     because it's easy to miss. Clear the holding list after each turn.
 
-TODO (build together):
   1. Loop: capture_observation -> provider.decide_next_action -> policy
      check -> execute against Playwright -> log -> repeat.
   2. Resolve target_ref back to a Playwright locator using the side
@@ -146,7 +145,6 @@ def run_discovery(
 
         if action.kind == ActionKind.STUCK:
             logger.log("stuck", {"stuck_reason": action.stuck_reason})
-            # Call EscalationManager here if we had one; returning is fine for now
             return DiscoveryResult(succeeded=False, turns=turns, run_id=logger.run_id, stuck_reason=action.stuck_reason)
 
         # 3. CHECK (PolicyGate)

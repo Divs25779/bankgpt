@@ -2,8 +2,7 @@
 Compiles a successful discovery run into a CapabilityArtifact.
 
 This is the seam between "the model discovered a flow" and "the flow is
-now a reusable capability" -- see the through-line in the assignment
-brief. It deliberately does very little inference: the model's
+now a reusable capability". It deliberately does very little inference: the model's
 per-turn ProposedAction already names a target_ref that resolves to a
 concrete ObservedElement (role + accessible name), so compiling a Step
 is close to a direct copy, not a re-derivation. Where the compiler *does*

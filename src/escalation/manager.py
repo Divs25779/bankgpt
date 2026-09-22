@@ -1,7 +1,5 @@
 """
-Human escalation & handoff -- the part of the brief explicitly called
-out as needing to be REAL, not a TODO, even though the operator UI
-itself may be mocked.
+Human escalation & handoff
 
 WHY THIS COUNTS AS REAL, NOT MOCKED, DESPITE BEING A TERMINAL PROMPT:
 The browser runs headed throughout (see src/agent/cli.py and

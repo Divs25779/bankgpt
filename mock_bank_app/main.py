@@ -101,7 +101,7 @@ def submit_subaccount(request: Request, member_id: str, deposit_amount: str = Fo
     if error == "__UNMAPPED__":
         # The deliberately-unmapped error path: text that matches no
         # declared BusinessOutcome or EscalationTrigger in the artifact
-        # we compile. This is the alternate "unhandled validation error"
+        # I compile. This is the alternate "unhandled validation error"
         # HITL scenario -- see mock_bank_app/data.py docstring.
         return templates.TemplateResponse(request, "unmapped_error.html", {"member": member}, status_code=500)
     if error:
