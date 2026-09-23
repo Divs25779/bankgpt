@@ -1,6 +1,6 @@
 """
 Anthropic adapter. Uses tool-calling (not the vision-based "computer use"
-beta) because our observation is already structured text (the
+beta) because my observation is already structured text (the
 accessibility tree) -- there is nothing for a vision model to add here,
 and forcing one structured tool call per turn makes ProposedAction
 parsing trivial and cheap. See src/llm/base.py for why the interface
@@ -27,12 +27,15 @@ _DECIDE_TOOL = {
             "target_ref": {
                 "type": "string",
                 "description": "The 'ref' of the element to act on, copied exactly "
-                "from the observation. Omit for navigate/wait/done/stuck.",
+                "from the observation's visible elements. Omit for navigate/wait/done/stuck, "
+                "and omit for read_text when reading a labeled data field (use text_value instead).",
             },
             "text_value": {
                 "type": "string",
-                "description": "Text to type, URL to navigate to, or option to select. "
-                "Omit for click/read_text/done/stuck.",
+                "description": "Text to type, URL to navigate to, option to select, OR -- for "
+                "kind=read_text on a labeled data field with no target_ref -- the exact label "
+                "string copied from the observation's readable data fields (e.g. 'Savings Balance:'). "
+                "Required for read_text when no target_ref applies; omit for click/done/stuck.",
             },
             "reasoning": {"type": "string"},
             "stuck_reason": {
@@ -65,6 +68,9 @@ class AnthropicProvider(LLMProvider):
             f'- ref={e.ref} role={e.role} name="{e.name}"' + (f' value="{e.value}"' if e.value else "")
             for e in observation.elements
         )
+        labels_desc = (
+            ", ".join(observation.labels) if observation.labels else "(none)"
+        )
         history_desc = "\n".join(
             f"{i + 1}. {a.kind.value} ref={a.target_ref} value={a.text_value} -- {a.reasoning}"
             for i, a in enumerate(history)
@@ -73,7 +79,10 @@ class AnthropicProvider(LLMProvider):
         prompt = (
             f"Goal: {goal}\n\n"
             f"Current page: {observation.title} ({observation.url})\n\n"
-            f"Visible elements:\n{elements_desc}\n\n"
+            f"Visible interactive elements (click/type/select via target_ref):\n{elements_desc}\n\n"
+            f"Readable data fields on this page (labels only, not their current values -- "
+            f"to read one, use kind=read_text with text_value set to the exact label string "
+            f"below, and no target_ref):\n{labels_desc}\n\n"
             f"Actions taken so far:\n{history_desc}\n\n"
             "Propose exactly one next action using the propose_action tool. "
             "If the goal is already achieved by the current page state, use kind=done. "

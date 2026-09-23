@@ -77,7 +77,29 @@ class Observation(BaseModel):
     url: str
     title: str
     elements: list[ObservedElement]
+    labels: list[str] = Field(default_factory=list)
     screenshot_path: Optional[str] = None  # only attached on request / on failure
+
+
+class DialogEvent(BaseModel):
+    """
+    Records a native browser dialog (confirm/alert/prompt/beforeunload)
+    that fired as a synchronous side effect of executing an action
+    during discovery, and how the loop handled it.
+
+    This is NOT optional bookkeeping -- if the loop auto-handles dialogs
+    with a blanket handler and never records that one fired, the
+    compiler has no way of knowing the resulting artifact needs a
+    Step.expects_dialog set, and replay (which does NOT use a blanket
+    handler -- see src/artifact/schema.py's DialogPolicy docstring) will
+    hang or fail the moment it hits the same dialog for real. Every
+    DiscoveryTurn (src/artifact/compiler.py) whose action triggered a
+    dialog must carry one of these.
+    """
+
+    message: str
+    dialog_type: str   # "alert" | "confirm" | "beforeunload" | "prompt"
+    policy: str          # "accept" | "dismiss" -- how discovery handled it
 
 
 class LLMProvider(ABC):

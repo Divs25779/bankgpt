@@ -1,0 +1,274 @@
+{
+  "id": "search_for_member_12345,_read_their_current_savings_balance,_the",
+  "name": "Search for member 12345, read their current savings balance, then open a new sub-account for them with an initial deposit of 500 and reach the confirmation screen",
+  "description": "Search for member 12345, read their current savings balance, then open a new sub-account for them with an initial deposit of 500 and reach the confirmation screen",
+  "version": 1,
+  "created_at": "2026-09-22T05:32:59.518476Z",
+  "created_from_run_id": "discovery_1790055161",
+  "target_app": {
+    "app_id": "localhost:5000",
+    "base_url": "http://localhost:5000",
+    "version_fingerprint": null,
+    "tenant_id": null
+  },
+  "inputs": [
+    {
+      "name": "member_id",
+      "type": "string",
+      "required": true,
+      "description": "Value for member_id",
+      "pii": false
+    },
+    {
+      "name": "deposit_amount",
+      "type": "string",
+      "required": true,
+      "description": "Value for deposit_amount",
+      "pii": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "savings_balance",
+      "type": "string",
+      "description": "Value read from the 'Savings Balance:' field.",
+      "source_step": 2
+    }
+  ],
+  "steps": [
+    {
+      "index": 0,
+      "action": "type",
+      "target": {
+        "strategy": "role_name",
+        "value": {
+          "role": "textbox",
+          "name": "Member ID:"
+        },
+        "fallbacks": [],
+        "intent": "textbox 'Member ID:' (discovered turn 0)"
+      },
+      "value_ref": "member_id",
+      "output_ref": null,
+      "checkpoint": {
+        "description": "page advanced to 'Member Search'",
+        "assertion": {
+          "contains": "Member Search",
+          "not_contains": null,
+          "matches_regex": null
+        },
+        "timeout_ms": 5000
+      },
+      "risk": "safe",
+      "expects_dialog": null,
+      "notes": null
+    },
+    {
+      "index": 1,
+      "action": "click",
+      "target": {
+        "strategy": "role_name",
+        "value": {
+          "role": "button",
+          "name": "Search"
+        },
+        "fallbacks": [],
+        "intent": "button 'Search' (discovered turn 1)"
+      },
+      "value_ref": null,
+      "output_ref": null,
+      "checkpoint": {
+        "description": "page advanced to 'Member Detail'",
+        "assertion": {
+          "contains": "Member Detail",
+          "not_contains": null,
+          "matches_regex": null
+        },
+        "timeout_ms": 5000
+      },
+      "risk": "safe",
+      "expects_dialog": null,
+      "notes": null
+    },
+    {
+      "index": 2,
+      "action": "read_text",
+      "target": {
+        "strategy": "label_sibling",
+        "value": {
+          "label": "Savings Balance:"
+        },
+        "fallbacks": [],
+        "intent": "value adjacent to label 'Savings Balance:' (discovered turn 2)"
+      },
+      "value_ref": null,
+      "output_ref": "savings_balance",
+      "checkpoint": {
+        "description": "page advanced to 'Member Detail'",
+        "assertion": {
+          "contains": "Member Detail",
+          "not_contains": null,
+          "matches_regex": null
+        },
+        "timeout_ms": 5000
+      },
+      "risk": "safe",
+      "expects_dialog": null,
+      "notes": null
+    },
+    {
+      "index": 3,
+      "action": "click",
+      "target": {
+        "strategy": "role_name",
+        "value": {
+          "role": "link",
+          "name": "Open New Sub-Account"
+        },
+        "fallbacks": [],
+        "intent": "link 'Open New Sub-Account' (discovered turn 3)"
+      },
+      "value_ref": null,
+      "output_ref": null,
+      "checkpoint": {
+        "description": "page advanced to 'Open New Sub-Account'",
+        "assertion": {
+          "contains": "Open New Sub-Account",
+          "not_contains": null,
+          "matches_regex": null
+        },
+        "timeout_ms": 5000
+      },
+      "risk": "risky_reversible",
+      "expects_dialog": null,
+      "notes": null
+    },
+    {
+      "index": 4,
+      "action": "type",
+      "target": {
+        "strategy": "role_name",
+        "value": {
+          "role": "textbox",
+          "name": "Initial Deposit Amount ($):"
+        },
+        "fallbacks": [],
+        "intent": "textbox 'Initial Deposit Amount ($):' (discovered turn 4)"
+      },
+      "value_ref": "deposit_amount",
+      "output_ref": null,
+      "checkpoint": {
+        "description": "page advanced to 'Open New Sub-Account'",
+        "assertion": {
+          "contains": "Open New Sub-Account",
+          "not_contains": null,
+          "matches_regex": null
+        },
+        "timeout_ms": 5000
+      },
+      "risk": "safe",
+      "expects_dialog": null,
+      "notes": null
+    },
+    {
+      "index": 5,
+      "action": "click",
+      "target": {
+        "strategy": "role_name",
+        "value": {
+          "role": "button",
+          "name": "Continue"
+        },
+        "fallbacks": [],
+        "intent": "button 'Continue' (discovered turn 5)"
+      },
+      "value_ref": null,
+      "output_ref": null,
+      "checkpoint": {
+        "description": "page advanced to 'Confirm Sub-Account Opening'",
+        "assertion": {
+          "contains": "Confirm Sub-Account Opening",
+          "not_contains": null,
+          "matches_regex": null
+        },
+        "timeout_ms": 5000
+      },
+      "risk": "risky_reversible",
+      "expects_dialog": null,
+      "notes": null
+    },
+    {
+      "index": 6,
+      "action": "click",
+      "target": {
+        "strategy": "role_name",
+        "value": {
+          "role": "button",
+          "name": "Confirm"
+        },
+        "fallbacks": [],
+        "intent": "button 'Confirm' (discovered turn 6)"
+      },
+      "value_ref": null,
+      "output_ref": null,
+      "checkpoint": {
+        "description": "page advanced to 'Sub-Account Opened'",
+        "assertion": {
+          "contains": "Sub-Account Opened",
+          "not_contains": null,
+          "matches_regex": null
+        },
+        "timeout_ms": 5000
+      },
+      "risk": "risky_irreversible",
+      "expects_dialog": "accept",
+      "notes": null
+    }
+  ],
+  "business_outcomes": [
+    {
+      "name": "member_not_found",
+      "description": "No member exists with the given ID.",
+      "detection": {
+        "contains": "No member found",
+        "not_contains": null,
+        "matches_regex": null
+      },
+      "is_success": false
+    },
+    {
+      "name": "permission_denied",
+      "description": "Operator role lacks permission to view this member.",
+      "detection": {
+        "contains": "Access Denied",
+        "not_contains": null,
+        "matches_regex": null
+      },
+      "is_success": false
+    }
+  ],
+  "escalation_triggers": [
+    {
+      "name": "session_expired",
+      "description": "Session timed out mid-flow; replay has no re-authentication logic by design.",
+      "detection": {
+        "contains": "Session Expired",
+        "not_contains": null,
+        "matches_regex": null
+      },
+      "reason": "Session expired -- a human must re-authenticate to continue."
+    }
+  ],
+  "success_checkpoint": {
+    "description": "goal complete: reached 'Sub-Account Opened'",
+    "assertion": {
+      "contains": "Sub-Account Opened",
+      "not_contains": null,
+      "matches_regex": null
+    },
+    "timeout_ms": 5000
+  },
+  "escalate_on_unclassified_hard_failure": true,
+  "review_status": "approved",
+  "max_risk_level": "risky_irreversible"
+}

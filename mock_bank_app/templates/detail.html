@@ -1,0 +1,22 @@
+<html>
+<head><title>Member Detail</title></head>
+<body bgcolor="#ECECEC">
+<table border="1" cellpadding="4" cellspacing="0" width="500">
+  <tr><td bgcolor="#003366"><font color="white" face="Arial"><b>Member Detail</b></font></td></tr>
+  <tr>
+    <td>
+      <table border="0" cellpadding="3">
+        <tr><td><b>Member ID:</b></td><td>{{ member.member_id }}</td></tr>
+        <tr><td><b>Name:</b></td><td>{{ member.name }}</td></tr>
+        <tr><td><b>Savings Balance:</b></td><td>{{ member.savings_balance }}</td></tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="/member/{{ member.member_id }}/new-subaccount">Open New Sub-Account</a>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

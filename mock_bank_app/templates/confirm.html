@@ -1,0 +1,33 @@
+<html>
+<head><title>Confirm Sub-Account Opening</title></head>
+<body bgcolor="#ECECEC">
+<table border="1" cellpadding="4" cellspacing="0" width="500">
+  <tr><td bgcolor="#003366"><font color="white" face="Arial"><b>Confirm Sub-Account Opening</b></font></td></tr>
+  <tr>
+    <td>
+      <table border="0" cellpadding="3">
+        <tr><td><b>Member:</b></td><td>{{ member.name }} ({{ member.member_id }})</td></tr>
+        <tr><td><b>Initial Deposit:</b></td><td>${{ deposit_amount }}</td></tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <!--
+        Native browser confirm() dialog on submit -- this is the
+        "unexpected confirmation dialog" case from the environment
+        description. Playwright surfaces this as a page "dialog" event
+        that must be explicitly handled (accepted/dismissed) or the
+        page will hang waiting for a response that never comes; a
+        screenshot-only automation approach would miss this entirely.
+      -->
+      <form method="post" action="/member/{{ member.member_id }}/subaccount/confirm"
+            onsubmit="return confirm('Are you sure you want to open this sub-account with an initial deposit of ${{ deposit_amount }}?');">
+        <input type="hidden" name="deposit_amount" value="{{ deposit_amount }}">
+        <input type="submit" value="Confirm">
+      </form>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

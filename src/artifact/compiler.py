@@ -2,8 +2,7 @@
 Compiles a successful discovery run into a CapabilityArtifact.
 
 This is the seam between "the model discovered a flow" and "the flow is
-now a reusable capability" -- see the through-line in the assignment
-brief. It deliberately does very little inference: the model's
+now a reusable capability". It deliberately does very little inference: the model's
 per-turn ProposedAction already names a target_ref that resolves to a
 concrete ObservedElement (role + accessible name), so compiling a Step
 is close to a direct copy, not a re-derivation. Where the compiler *does*
@@ -29,11 +28,16 @@ approved for unattended irreversible execution until a human promotes it
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Optional
+
 from src.artifact.schema import (
     ActionType,
     BusinessOutcome,
     Checkpoint,
     CapabilityArtifact,
+    DialogPolicy,
+    EscalationTrigger,
     InputParam,
     Locator,
     LocatorStrategy,
@@ -44,12 +48,58 @@ from src.artifact.schema import (
     TargetAppRef,
     TextAssertion,
 )
-from src.llm.base import ActionKind, Observation, ProposedAction
+from src.llm.base import ActionKind, DialogEvent, Observation, ProposedAction
 
 _RISKY_VERB_HINTS = ("submit", "confirm", "open", "create", "delete", "transfer", "approve")
+_IRREVERSIBLE_VERB_HINTS = ("open", "create", "transfer", "delete", "approve")
 
 
-def _risk_for(action: ProposedAction) -> RiskLevel:
+@dataclass
+class DiscoveryTurn:
+    """
+    One turn of the discovery loop, and everything the compiler needs to
+    turn it into a Step.
+
+    `observation` is what the model was SHOWN before deciding -- the
+    action's `target_ref` was assigned against THIS observation's
+    elements, so target resolution below must look here, not in
+    `resulting_observation`. Those are two independent
+    capture_observation() calls, usually against two different pages
+    (before the action / after it), and refs restart from "e0" on every
+    call -- a ref from one has no relationship to a same-named ref in
+    the other. This was caught during review by tracing a concrete
+    "click Search" step end to end; see REPORT.md section 2.
+
+    `resulting_observation` is the state AFTER `action` executed -- the
+    source for THIS step's own checkpoint (not the next turn's).
+
+    `dialog` MUST be populated whenever the loop's dialog handler fired
+    while executing `action`, even though discovery auto-handles the
+    dialog and the run just continues as if nothing happened. If this
+    field is silently left None for a turn that actually triggered a
+    dialog, the compiled artifact will be missing Step.expects_dialog,
+    and replay -- which does not use a blanket auto-handler -- will hang
+    or fail the first time it hits that same dialog for real. See
+    DialogEvent's docstring in src/llm/base.py.
+    """
+
+    observation: Observation
+    action: ProposedAction
+    resulting_observation: Observation
+    dialog: Optional[DialogEvent] = None
+
+
+def _risk_for(action: ProposedAction, dialog: Optional[DialogEvent]) -> RiskLevel:
+    if dialog is not None:
+        # A step that triggers a confirmation dialog is, definitionally,
+        # not a pure read. If the model's own reasoning also reads as an
+        # account-creation/money-movement verb, treat it as genuinely
+        # irreversible -- confirming to open a sub-account with a real
+        # deposit is not something a caller can casually undo. Absent
+        # such a hint, a confirmed dialog is still risky_reversible.
+        if any(hint in action.reasoning.lower() for hint in _IRREVERSIBLE_VERB_HINTS):
+            return RiskLevel.RISKY_IRREVERSIBLE
+        return RiskLevel.RISKY_REVERSIBLE
     if action.kind in (ActionKind.CLICK,) and any(
         hint in action.reasoning.lower() for hint in _RISKY_VERB_HINTS
     ):
@@ -67,28 +117,36 @@ def compile_artifact(
     inputs: list[InputParam],
     outputs: list[OutputField],
     business_outcomes: list[BusinessOutcome],
-    turns: list[tuple[ProposedAction, Observation]],
+    turns: list[DiscoveryTurn],
     success_checkpoint: Checkpoint,
+    escalation_triggers: list[EscalationTrigger] | None = None,
 ) -> CapabilityArtifact:
     """
-    `turns` is the discovery run's (action, resulting_observation) pairs,
-    in order, for the successful run only. The caller (agent loop) is
-    responsible for only passing turns from a run that actually reached
-    the goal -- the compiler does not re-verify success; that's the
-    agent loop's job during discovery and the replay executor's job on
-    every subsequent invocation.
+    `turns` is the discovery run's turns, in order, for the successful
+    run only. The caller (agent loop) is responsible for only passing
+    turns from a run that actually reached the goal -- the compiler does
+    not re-verify success; that's the agent loop's job during discovery
+    and the replay executor's job on every subsequent invocation.
+
+    `escalation_triggers`, like `business_outcomes`, is DECLARED
+    knowledge about the target app, not something derivable from one
+    successful run -- a happy-path discovery run never encounters
+    "session expired", so there is nothing in `turns` to infer it from.
+    The caller supplies both from having explored the app's failure
+    modes directly (see mock_bank_app's documented error-injection IDs).
     """
 
     steps: list[Step] = []
-    for i, (action, resulting_obs) in enumerate(turns):
+    for i, turn in enumerate(turns):
+        action = turn.action
+
         target: Locator | None = None
         if action.target_ref:
-            elem = next((e for e in resulting_obs.elements if e.ref == action.target_ref), None)
-            # Fall back to the ref itself if the element isn't in the *resulting*
-            # observation (it was on the prior page) -- acceptable here because
-            # the agent loop is expected to pass the pre-action observation's
-            # element for target resolution in the real implementation; flagged
-            # here so it's visible during review rather than silently wrong.
+            # Resolve against the PRE-action observation -- the one the
+            # model actually saw when it picked this target_ref. See
+            # DiscoveryTurn's docstring for why resulting_observation
+            # would be the wrong (and usually unrelated) element list.
+            elem = next((e for e in turn.observation.elements if e.ref == action.target_ref), None)
             name_val = elem.name if elem else action.target_ref
             role_val = elem.role if elem else "unknown"
             target = Locator(
@@ -96,14 +154,32 @@ def compile_artifact(
                 value={"role": role_val, "name": name_val},
                 intent=f"{role_val} '{name_val}' (discovered turn {i})",
             )
-
-        checkpoint = None
-        if i + 1 < len(turns):
-            next_obs = turns[i + 1][1]
-            checkpoint = Checkpoint(
-                description=f"page advanced to '{next_obs.title}'",
-                assertion=TextAssertion(contains=next_obs.title),
+        elif action.kind == ActionKind.READ_TEXT and action.text_value:
+            # The model chose a label (from Observation.labels) instead
+            # of a target_ref -- there was no interactive element to
+            # point at, only a labeled data field. LABEL_SIBLING encodes
+            # "find this label, then read what's next to it" explicitly
+            # -- see LocatorStrategy.LABEL_SIBLING docstring for why
+            # this isn't just TEXT with a different value shape.
+            target = Locator(
+                strategy=LocatorStrategy.LABEL_SIBLING,
+                value={"label": action.text_value},
+                intent=f"value adjacent to label '{action.text_value}' (discovered turn {i})",
             )
+
+        # This step's own checkpoint comes from THIS turn's own result,
+        # not a lookahead to the next turn -- every turn has a
+        # resulting_observation, so this always applies, including
+        # (especially) the last step, which is usually the actual
+        # success page and previously got no checkpoint at all.
+        checkpoint = Checkpoint(
+            description=f"page advanced to '{turn.resulting_observation.title}'",
+            assertion=TextAssertion(contains=turn.resulting_observation.title),
+        )
+
+        expects_dialog = None
+        if turn.dialog is not None:
+            expects_dialog = DialogPolicy(turn.dialog.policy)
 
         steps.append(
             Step(
@@ -112,7 +188,8 @@ def compile_artifact(
                 target=target,
                 value_ref=None,  # caller should post-process: map literal text_value -> InputParam.name
                 checkpoint=checkpoint,
-                risk=_risk_for(action),
+                risk=_risk_for(action, turn.dialog),
+                expects_dialog=expects_dialog,
                 notes=None,  # reasoning intentionally dropped -- see module docstring
             )
         )
@@ -127,6 +204,7 @@ def compile_artifact(
         outputs=outputs,
         steps=steps,
         business_outcomes=business_outcomes,
+        escalation_triggers=escalation_triggers or [],
         success_checkpoint=success_checkpoint,
         review_status=ReviewStatus.DRAFT,
     )
