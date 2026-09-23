@@ -96,7 +96,7 @@ def _parse_kv(pairs: list[str]) -> dict[str, str]:
 
 
 def main() -> int:
-    load_dotenv()  # reads .env in the current working directory, if present -- see README
+    load_dotenv()  
 
     parser = argparse.ArgumentParser(
         description="Run a discovery session and compile the result into a capability artifact."

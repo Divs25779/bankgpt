@@ -103,7 +103,7 @@ class Checkpoint(BaseModel):
     """
     A condition that must hold for a step (or the whole capability) to be
     considered successfully completed. Checkpoints exist because "the
-    click didn't error" is not evidence the click worked -- see glossary.
+    click didn't error" is not evidence the click worked.
     """
 
     description: str
@@ -200,7 +200,6 @@ class InputParam(BaseModel):
     type: ParamType
     required: bool = True
     description: str
-    enum_values: list[str] | None = None
     pii: bool = Field(
         default=False,
         description="If true, this parameter's *value* is redacted in "
@@ -264,7 +263,7 @@ class EscalationTrigger(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Target app reference (multi-tenant / heterogeneity hook -- see REPORT.md 3.7)
+# Target app reference (multi-tenant / heterogeneity hook)
 # ---------------------------------------------------------------------------
 
 class TargetAppRef(BaseModel):

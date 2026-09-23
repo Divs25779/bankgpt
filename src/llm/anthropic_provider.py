@@ -1,6 +1,6 @@
 """
 Anthropic adapter. Uses tool-calling (not the vision-based "computer use"
-beta) because our observation is already structured text (the
+beta) because my observation is already structured text (the
 accessibility tree) -- there is nothing for a vision model to add here,
 and forcing one structured tool call per turn makes ProposedAction
 parsing trivial and cheap. See src/llm/base.py for why the interface

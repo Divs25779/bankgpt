@@ -1,0 +1,17 @@
+- table:
+  - rowgroup:
+    - row "Confirm Sub-Account Opening":
+      - cell "Confirm Sub-Account Opening"
+    - 'row "Member: A. Fernandes (67890) Initial Deposit: $250"':
+      - 'cell "Member: A. Fernandes (67890) Initial Deposit: $250"':
+        - table:
+          - rowgroup:
+            - 'row "Member: A. Fernandes (67890)"':
+              - cell "Member:"
+              - cell "A. Fernandes (67890)"
+            - 'row "Initial Deposit: $250"':
+              - cell "Initial Deposit:"
+              - cell "$250"
+    - row "Confirm":
+      - cell "Confirm":
+        - button "Confirm"

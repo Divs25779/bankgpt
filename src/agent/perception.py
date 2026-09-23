@@ -19,18 +19,18 @@ verify was a deliberate no: boring-and-proven beats new-and-nicer for
 the single path this project cannot afford to have break. See
 REPORT.md section 1 for this trade-off written up properly.
 
-WHY OUR OWN ref SCHEME, NOT PLAYWRIGHT'S NATIVE aria-ref MECHANISM
+WHY MY OWN ref SCHEME, NOT PLAYWRIGHT'S NATIVE aria-ref MECHANISM
 (the one Playwright's own MCP / AI tooling uses internally)? Two
 independent reasons:
   1. That mechanism is Playwright-MCP-internal plumbing, not a stably
-     documented third-party contract -- risk we don't need to take on.
+     documented third-party contract -- risk I don't need to take on.
   2. Playwright's own docs are explicit that those refs are valid only
      within one snapshot and go stale the moment the page changes. That
      makes them fine for the LLM's *immediate* next click during
      discovery, but useless for something a CapabilityArtifact needs to
      reference months later during replay -- there is no snapshot to
      resolve them against anymore.
-  Our own ref (e0, e1, ...) gets the same ergonomic win -- the model
+  My own ref (e0, e1, ...) gets the same ergonomic win -- the model
   picks an opaque id instead of inventing a CSS selector -- without
   taking on either problem: it's resolved via the fully public,
   standard `page.get_by_role(role, name=...)` API, and the compiler

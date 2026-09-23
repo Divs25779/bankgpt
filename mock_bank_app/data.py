@@ -34,7 +34,7 @@ SLOW_LOAD_DELAY_SECONDS = 6
 # EscalationTrigger. This is the alternate "unhandled validation error"
 # hard-failure scenario mentioned as an option alongside session expiry;
 # kept available so both suggested HITL triggers can be demonstrated,
-# even though the artifact we build treats session expiry as the primary,
+# even though the artifact I build treats session expiry as the primary,
 # declared escalation path.
 UNMAPPED_ERROR_AMOUNT = "999999"
 
