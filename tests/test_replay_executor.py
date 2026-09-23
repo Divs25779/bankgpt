@@ -5,7 +5,7 @@ conftest needed once it's installed).
 
 These are deliberately NOT mocked. The two bugs they guard against were
 both genuine surprises about how a real browser behaves, not logic
-errors -- a test built on our own assumptions about get_by_text() would
+errors -- a test built on my own assumptions about get_by_text() would
 have encoded the same wrong assumption and passed regardless. Using
 page.set_content(...) with tiny controlled HTML fixtures keeps these
 fast and independent of mock_bank_app / a live server, while still

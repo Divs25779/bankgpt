@@ -33,12 +33,11 @@ playwright install chromium
 Once your venv is active, always invoke `python` (not `python3`) so you don't accidentally
 fall through to a global interpreter outside the venv.
 
-**API key:** copy `.env.example` to `.env` and fill in your real key:
-```bash
-cp .env.example .env   # Windows: copy .env.example .env
-```
-`.env` is read automatically (via `python-dotenv`) and is gitignored -- it will never be committed.
-Never put a real key directly into `.env.example`, `README.md`, or any tracked file.
+Create `.env` file:
+- For Anthropic, the following keys need to be set:
+`LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY={YOUR_API_KEY}`
+- For OpenAI, the following keys need to be set:
+`LLM_PROVIDER=openai` and `OPENAI_API_KEY={YOUR_API_KEY}`
 
 Run the mock target app (in a separate terminal, **from the repo root** -- it's a package,
 so `python mock_bank_app/main.py` directly will fail with a `ModuleNotFoundError`):
@@ -59,7 +58,9 @@ This serves http://localhost:5000. Try it manually first:
 - On the deposit form, entering `999999` produces an unmapped system error (the alternate
   "unhandled validation error" hard-failure scenario, kept available alongside session expiry).
 
+
 ## Demo path
+Note: If using PowerShell, replace \ with the backtick ` character for multi-line commands
 
 ```bash
 # 1. Discovery run: LLM drives the mock app to accomplish a goal, produces an artifact.
@@ -87,6 +88,16 @@ python -m src.replay.cli \
 
 # Add --headless to run without a visible window, or --no-human to disable the
 # EscalationManager for unattended runs (any escalation becomes an immediate hard_failure).
+
+# 4. Stretch goal: multi-run stability -- replays N times, one shared evidence folder,
+# reports a success/business_outcome/escalated/hard_failure breakdown across attempts.
+python -m src.replay.cli \
+  --artifact evidence/artifacts/lookup_and_open_subaccount.json \
+  --input member_id=67890 --input deposit_amount=250 --repeat 5
+
+# 5. Stretch goal: confidence & approval -- promote a draft artifact to approved
+# (required before any risky_irreversible step in it may run unattended; see REPORT.md section 6)
+python -m src.artifact.approve --artifact evidence/artifacts/lookup_and_open_subaccount.json
 ```
 
 The browser runs headed by default (`--headless` to disable) -- watch it drive the app live during
@@ -113,7 +124,7 @@ The safety and schema layers (`src/artifact`, `src/safety`, `src/evidence`) have
 dependency and can be exercised directly, e.g.:
 
 ```bash
-python3 -c "from src.artifact.schema import CapabilityArtifact; print('schema OK')"
+python -c "from src.artifact.schema import CapabilityArtifact; print('schema OK')"
 ```
 
 ## Repo layout

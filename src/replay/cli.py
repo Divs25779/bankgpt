@@ -48,6 +48,12 @@ def main() -> int:
         "failure becomes an immediate hard_failure. Useful for unattended runs with nobody "
         "present to respond to an intervention prompt.",
     )
+    parser.add_argument(
+        "--repeat", type=int, default=1,
+        help="Replay N times against the SAME target and inputs, reporting a stability/flakiness "
+        "signal across attempts (all attempts share one evidence run folder, not N separate ones). "
+        "Default 1 -- single run, output unchanged from a plain replay.",
+    )
     args = parser.parse_args()
 
     try:
@@ -74,16 +80,46 @@ def main() -> int:
     ))
 
     escalation = None if args.no_human else EscalationManager(run_id=run_id, logger=logger)
+    stability_mode = args.repeat > 1
 
+    results = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=args.headless)
         page = browser.new_page()
-        page.goto(artifact.target_app.base_url)
 
-        print(f"[{run_id}] replaying '{artifact.name}' (v{artifact.version})")
-        result = replay_artifact(artifact, input_values, policy, logger, page, escalation=escalation)
+        for i in range(1, args.repeat + 1):
+            page.goto(artifact.target_app.base_url)  # reset to a clean starting state every attempt
+            attempt = i if stability_mode else None
+
+            if stability_mode:
+                print(f"[{run_id}] attempt {i}/{args.repeat}...")
+                logger.log("attempt_start", {"attempt": i})
+            else:
+                print(f"[{run_id}] replaying '{artifact.name}' (v{artifact.version})")
+
+            result = replay_artifact(artifact, input_values, policy, logger, page,
+                                      escalation=escalation, attempt=attempt)
+            results.append(result)
+
+            if stability_mode:
+                logger.log("attempt_result", {"attempt": i, "status": result.status.value})
+                print(f"[{run_id}] attempt {i}: {result.status.value}")
+
         browser.close()
 
+    if stability_mode:
+        counts = {"success": 0, "business_outcome": 0, "escalated": 0, "hard_failure": 0}
+        for r in results:
+            counts[r.status.value] = counts.get(r.status.value, 0) + 1
+        logger.log("stability_summary", {"attempts": args.repeat, **counts})
+        print(f"[{run_id}] stability across {args.repeat} attempts: {counts}")
+        print(f"[{run_id}] evidence at {logger.dir}/")
+        # A stability signal treats hard_failure as the only real red flag --
+        # business_outcome/escalated are legitimate, expected alternate paths,
+        # not evidence the replay MECHANICS are flaky.
+        return 0 if counts["hard_failure"] == 0 else 1
+
+    result = results[0]
     print(f"[{run_id}] status: {result.status.value}")
     if result.status == ReplayStatus.SUCCESS:
         print(f"[{run_id}] outputs: {result.outputs}")

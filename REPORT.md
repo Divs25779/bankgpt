@@ -30,15 +30,15 @@ Key decisions made up front:
   `page.locator("body").aria_snapshot()` (YAML, stable since Playwright v1.49), parsed with PyYAML
   plus a small per-leaf regex. Playwright v1.63.0 (released ~Sept 2026, about two weeks before this
   was written) added `ariaSnapshotJSON()`, which would have been a nicer shape to parse directly.
-  We didn't use it: the discovery run is the one requirement in this project that cannot be
+  I didn't use it: the discovery run is the one requirement in this project that cannot be
   mocked or allowed to be flaky, and building that on an API that had barely shipped -- with no
   way to fully verify its Python-binding behavior in the time available -- was the wrong place to
   take on version risk. Boring-and-proven beat new-and-nicer for this one path specifically.
-- **Our own per-turn element refs, not Playwright's native `aria-ref` mechanism** (the one
+- **My own per-turn element refs, not Playwright's native `aria-ref` mechanism** (the one
   Playwright's own MCP/AI tooling uses internally). That mechanism is explicitly documented as
   valid only within a single snapshot and goes stale the moment the page changes -- fine for an
   LLM's immediate next click, useless for a `CapabilityArtifact` a replay engine needs to resolve
-  months later against a *different* page load. We assign our own ephemeral ref (`e0`, `e1`, ...)
+  months later against a *different* page load. I assign my own ephemeral ref (`e0`, `e1`, ...)
   per observation, resolved via the fully public `page.get_by_role(role, name=...)` API. The model
   gets the same ergonomic benefit (pick an opaque id, never invent a selector); the artifact
   compiler converts the winning run's `(ref -> role/name)` pairs into a durable `Locator` the model
@@ -126,6 +126,18 @@ between `src/agent/perception.py` and `src/replay/executor.py`, documented in bo
 Determinism is achieved by: no model in the replay decision loop at all; locator fallback chains
 tried in a fixed order; explicit checkpoints (not "the click didn't throw") gating every
 state-changing step.
+
+**Stretch goal: multi-run stability.** `src/replay/cli.py --repeat N` replays the same artifact
+and inputs N times and reports a per-status breakdown (`success` / `business_outcome` /
+`escalated` / `hard_failure`) as a flakiness signal. Deliberately does NOT create N evidence run
+folders -- all attempts share one `EvidenceLogger` (one `run_id`), bracketed by `attempt_start`/
+`attempt_result` log lines and a final `stability_summary`; only failure-capture filenames are
+attempt-prefixed, to avoid one attempt's screenshot overwriting another's. `hard_failure` is
+treated as the only real stability red flag -- `business_outcome`/`escalated` are legitimate,
+expected alternate paths across repeated runs, not evidence the replay mechanics themselves are
+flaky. The `attempt` parameter threaded through `replay_artifact` defaults to `None` and changes
+nothing about a plain single replay -- the existing test suite (`tests/test_replay_executor.py`)
+exercises the unchanged default path.
 
 **Checkpoints are evaluated against a combined text surface (title + URL + visible body text),
 not title or body alone.** Our own compiler builds per-step checkpoints from the resulting page's
@@ -228,12 +240,31 @@ Known limits: the risk classifier used during artifact compilation is heuristic 
 model reasoning text) and always defaults to a human-reviewable `draft` state rather than trusting
 its own classification -- see section 7.
 
+**Stretch goal: confidence & approval.** `PolicyGate.check_risk` already enforced that a
+`risky_irreversible` step cannot run unattended unless `review_status == approved` -- what was
+missing was any way to actually promote an artifact other than hand-editing its JSON.
+`src/artifact/approve.py` is that missing piece: it prints the artifact's full risk profile
+(flagging any irreversible step explicitly), requires an interactive confirmation (or `--yes` for
+scripted use), and writes `review_status=approved` back to the file. While building this, one gap
+surfaced worth naming: `compile_artifact`'s risk heuristic previously never produced
+`risky_irreversible` at all -- meaning the enforcement branch, though correct, was dead code for
+anything the compiler actually output. Fixed alongside this: a confirmed dialog whose reasoning
+reads as an account-creation/money-movement verb (open/create/transfer/delete/approve) is now
+classified `risky_irreversible` rather than capping at `risky_reversible` -- e.g. confirming to
+open a sub-account with a real deposit is not something a caller can casually undo.
+
+This is demonstrated with real evidence, not just described: `evidence/replay_1790055204/` is five
+replay attempts against the (then still `draft`) artifact, every one correctly blocked at the
+confirm step with `policy_violation`; `evidence/replay_1790055872/` is the same artifact, same
+inputs, five attempts, all `success`, after `python -m src.artifact.approve` was run in between.
+See `evidence/README.md` for the full index of what each evidence folder demonstrates.
+
 ## 7. Cuts
 
 - **Data Extraction & Target Roles Filter (`cell` and `heading`):** The `cell` and `heading` roles
   were deliberately removed from `TARGET_ROLES` in `perception.py` because they flooded the
   observation with noise, whereas the actual interactive elements were already captured perfectly.
-  To still support reading non-interactive data (like checking a savings balance), we implemented a
+  To still support reading non-interactive data (like checking a savings balance), I implemented a
   secondary pass that extracts labels (text ending in `:`) and exposes them directly to the model,
   separately from the interactive-element list. The compiler turns a chosen label into a dedicated
   `LABEL_SIBLING` locator strategy -- distinct from `TEXT` (which is reserved for plain
@@ -247,11 +278,27 @@ its own classification -- see section 7.
   tenant-specific override artifact (`TargetAppRef.tenant_id` set) would be resolved before falling
   back to a base artifact recorded against the vendor product -- no code implements that lookup, and
   no second tenant variant was recorded to demonstrate it. Would be the first thing built with more
-  time, since it's the part of the brief we could only describe rather than show.
+  time, since it's the part of the brief I could only describe rather than show.
 - **`version_fingerprint` is a schema field with nothing populating it.** The drift-detection story
   in section 4 depends on comparing a recorded fingerprint against what replay currently observes --
   the field exists on `TargetAppRef` but neither discovery nor replay ever computes or checks it.
   Right now the only drift signal that actually exists is the fallback-locator log line (section 3).
+- **`Step.notes` is a defined field with no writer yet.** It exists for human-authored review
+  annotations (e.g. "verified this locator manually," "fragile, revisit") -- `compile_artifact`
+  deliberately sets it to `None`, since a machine-compiled step has no human annotation at compile
+  time. The natural place to populate it is `src/artifact/approve.py` gaining a `--note "..."` flag
+  during promotion to `approved` -- designed for, not built.
+- **`TextAssertion.not_contains` and `matches_regex` are implemented in the replay executor's assertion check but never exercised** 
+  -- every declared assertion in this system happens to be expressible as a simple `contains` match. 
+  Real, working code path with no current caller; kept
+  because a negative or pattern-based assertion is a real, anticipated need (e.g. "checkpoint text
+  must not still show a loading state"), not speculative like `enum_values` was.
+- **Locator fallback chains are a fully implemented, tested mechanism with no current producer.**
+  `_resolve_locator` correctly tries `fallbacks` in order when present, but `compile_artifact`
+  never populates one -- every step compiled by this system has an empty fallback list. A real
+  fallback would need to come from either a second successful discovery run against slightly
+  different markup, or a human manually adding an alternate locator during review; neither exists
+  yet. The mechanism this system's robustness claims lean on is real, not the population of it.
 - **Desktop surface: design only.** Section 4's claim that the `Locator` abstraction maps onto a
   native app's UI Automation/MSAA tree is architectural reasoning, not something exercised against
   an actual desktop app.
@@ -288,8 +335,12 @@ its own classification -- see section 7.
   Given more time, a fake provider returning scripted `ProposedAction` sequences would be the next
   addition, letting the full discovery loop run in tests without an API key or a live browser
   session driven by a real model.
-- **Stretch goals not attempted, by choice** (the brief asks for at most one or two, depth over
-  breadth; we spent that budget on getting the core loop genuinely correct instead): an
-  agent-facing capability catalog/API endpoint, code generation from an artifact, confidence
-  scoring across repeated replays, and cross-tenant canonicalization demonstration were all left
-  undone rather than built thin.
+- **Stretch goals: two attempted, the rest deliberately not** (the brief asks for at most one or
+  two, depth over breadth). Attempted: confidence & approval (`src/artifact/approve.py`, section 6)
+  and multi-run stability (`--repeat N`, section 3) -- both chosen because they were small,
+  additive, and closed real gaps already named in this section rather than opening new surface
+  area. Not attempted: an agent-facing capability catalog/API endpoint, code generation from an
+  artifact, and a cross-tenant canonicalization demonstration -- each would have meant real new
+  design (or, for assisted fallback, reintroducing an LLM into the replay path, which contradicts
+  this system's core "no model in the loop during replay" claim), not a small addition on top of
+  what already existed.

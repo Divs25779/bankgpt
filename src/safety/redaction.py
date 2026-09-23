@@ -12,7 +12,7 @@ through. Two independent redaction sources, applied together:
    tagged pii=True.
 
 This runs on the discovery transcript, the evidence logs, and the replay
-result -- never selectively. Redaction that only covers "the fields we
+result -- never selectively. Redaction that only covers "the fields I
 remembered to tag" is not a guardrail, so pattern-based redaction always
 runs regardless of schema tagging.
 """
