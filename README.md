@@ -10,8 +10,7 @@ path an AI agent invokes in production. See `REPORT.md` for the full design writ
 End-to-end vertical slice complete: discovery loop, artifact schema + compiler, deterministic
 replay executor, escalation manager, safety/allowlist, redaction, evidence logging, and the mock
 target app are all implemented and have been run for real (see `/evidence/`, which holds both the
-saved capability artifact and the discovery/replay run logs -- see section 6 of the assignment
-brief's deliverable list). See `REPORT.md` section 7 for what was deliberately cut or left thin.
+saved capability artifact and the discovery/replay run logs). See `REPORT.md` section 7 for what was deliberately cut or left thin.
 
 ## Setup
 
