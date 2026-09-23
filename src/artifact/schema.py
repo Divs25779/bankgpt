@@ -200,7 +200,6 @@ class InputParam(BaseModel):
     type: ParamType
     required: bool = True
     description: str
-    enum_values: list[str] | None = None
     pii: bool = Field(
         default=False,
         description="If true, this parameter's *value* is redacted in "

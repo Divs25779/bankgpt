@@ -283,6 +283,11 @@ See `evidence/README.md` for the full index of what each evidence folder demonst
   in section 4 depends on comparing a recorded fingerprint against what replay currently observes --
   the field exists on `TargetAppRef` but neither discovery nor replay ever computes or checks it.
   Right now the only drift signal that actually exists is the fallback-locator log line (section 3).
+- **`Step.notes` is a defined field with no writer yet.** It exists for human-authored review
+  annotations (e.g. "verified this locator manually," "fragile, revisit") -- `compile_artifact`
+  deliberately sets it to `None`, since a machine-compiled step has no human annotation at compile
+  time. The natural place to populate it is `src/artifact/approve.py` gaining a `--note "..."` flag
+  during promotion to `approved` -- designed for, not built.
 - **Desktop surface: design only.** Section 4's claim that the `Locator` abstraction maps onto a
   native app's UI Automation/MSAA tree is architectural reasoning, not something exercised against
   an actual desktop app.

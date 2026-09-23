@@ -17,7 +17,6 @@
       "type": "string",
       "required": true,
       "description": "Value for member_id",
-      "enum_values": null,
       "pii": false
     },
     {
@@ -25,7 +24,6 @@
       "type": "string",
       "required": true,
       "description": "Value for deposit_amount",
-      "enum_values": null,
       "pii": false
     }
   ],
