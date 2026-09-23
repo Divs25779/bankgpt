@@ -288,6 +288,17 @@ See `evidence/README.md` for the full index of what each evidence folder demonst
   deliberately sets it to `None`, since a machine-compiled step has no human annotation at compile
   time. The natural place to populate it is `src/artifact/approve.py` gaining a `--note "..."` flag
   during promotion to `approved` -- designed for, not built.
+- **`TextAssertion.not_contains` and `matches_regex` are implemented in the replay executor's assertion check but never exercised** 
+  -- every declared assertion in this system happens to be expressible as a simple `contains` match. 
+  Real, working code path with no current caller; kept
+  because a negative or pattern-based assertion is a real, anticipated need (e.g. "checkpoint text
+  must not still show a loading state"), not speculative like `enum_values` was.
+- **Locator fallback chains are a fully implemented, tested mechanism with no current producer.**
+  `_resolve_locator` correctly tries `fallbacks` in order when present, but `compile_artifact`
+  never populates one -- every step compiled by this system has an empty fallback list. A real
+  fallback would need to come from either a second successful discovery run against slightly
+  different markup, or a human manually adding an alternate locator during review; neither exists
+  yet. The mechanism this system's robustness claims lean on is real, not the population of it.
 - **Desktop surface: design only.** Section 4's claim that the `Locator` abstraction maps onto a
   native app's UI Automation/MSAA tree is architectural reasoning, not something exercised against
   an actual desktop app.
